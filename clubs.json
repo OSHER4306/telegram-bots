@@ -1,0 +1,312 @@
+{
+  "clubs": {
+    "mta": {
+      "he": "מכבי תל אביב",
+      "en": "Maccabi Tel Aviv",
+      "emoji": "🟡",
+      "region": "il"
+    },
+    "hta": {
+      "he": "הפועל תל אביב",
+      "en": "Hapoel Tel Aviv",
+      "emoji": "🔴",
+      "region": "il"
+    },
+    "mhf": {
+      "he": "מכבי חיפה",
+      "en": "Maccabi Haifa",
+      "emoji": "🟢",
+      "region": "il"
+    },
+    "hhf": {
+      "he": "הפועל חיפה",
+      "en": "Hapoel Haifa",
+      "emoji": "🦈",
+      "region": "il"
+    },
+    "bjr": {
+      "he": "בית\"ר ירושלים",
+      "en": "Beitar Jerusalem",
+      "emoji": "🕎",
+      "region": "il"
+    },
+    "hjr": {
+      "he": "הפועל ירושלים",
+      "en": "Hapoel Jerusalem",
+      "emoji": "🐈",
+      "region": "il"
+    },
+    "hbs": {
+      "he": "הפועל באר שבע",
+      "en": "Hapoel Beer Sheva",
+      "emoji": "🐪",
+      "region": "il"
+    },
+    "mpt": {
+      "he": "מכבי פתח תקווה",
+      "en": "Maccabi Petah Tikva",
+      "emoji": "🔵",
+      "region": "il"
+    },
+    "hpt": {
+      "he": "הפועל פתח תקווה",
+      "en": "Hapoel Petah Tikva",
+      "emoji": "🔴",
+      "region": "il"
+    },
+    "bsk": {
+      "he": "בני סכנין",
+      "en": "Bnei Sakhnin",
+      "emoji": "⚪",
+      "region": "il"
+    },
+    "itb": {
+      "he": "עירוני טבריה",
+      "en": "Ironi Tiberias",
+      "emoji": "🔵",
+      "region": "il"
+    },
+    "mnt": {
+      "he": "מכבי נתניה",
+      "en": "Maccabi Netanya",
+      "emoji": "🟡",
+      "region": "il"
+    },
+    "hrg": {
+      "he": "הפועל רמת גן",
+      "en": "Hapoel Ramat Gan",
+      "emoji": "🔴",
+      "region": "il"
+    },
+    "iks": {
+      "he": "עירוני קרית שמונה",
+      "en": "Ironi Kiryat Shmona",
+      "emoji": "🔵",
+      "region": "il"
+    },
+    "rma": {
+      "he": "ריאל מדריד",
+      "en": "Real Madrid",
+      "emoji": "⚪",
+      "region": "world"
+    },
+    "fcb": {
+      "he": "ברצלונה",
+      "en": "Barcelona",
+      "emoji": "🔵",
+      "region": "world"
+    },
+    "mun": {
+      "he": "מנצ'סטר יונייטד",
+      "en": "Manchester United",
+      "emoji": "😈",
+      "region": "world"
+    },
+    "liv": {
+      "he": "ליברפול",
+      "en": "Liverpool",
+      "emoji": "🔴",
+      "region": "world"
+    },
+    "mci": {
+      "he": "מנצ'סטר סיטי",
+      "en": "Manchester City",
+      "emoji": "🩵",
+      "region": "world"
+    },
+    "ars": {
+      "he": "ארסנל",
+      "en": "Arsenal",
+      "emoji": "🔫",
+      "region": "world"
+    },
+    "tot": {
+      "he": "טוטנהאם",
+      "en": "Tottenham",
+      "emoji": "🐓",
+      "region": "world"
+    },
+    "int": {
+      "he": "אינטר",
+      "en": "Inter",
+      "emoji": "🐍",
+      "region": "world"
+    },
+    "acm": {
+      "he": "מילאן",
+      "en": "AC Milan",
+      "emoji": "👹",
+      "region": "world"
+    },
+    "boc": {
+      "he": "בוקה ג'וניורס",
+      "en": "Boca Juniors",
+      "emoji": "💙",
+      "region": "world"
+    },
+    "riv": {
+      "he": "ריבר פלייט",
+      "en": "River Plate",
+      "emoji": "🤍",
+      "region": "world"
+    },
+    "fen": {
+      "he": "פנרבחצ'ה",
+      "en": "Fenerbahce",
+      "emoji": "🐤",
+      "region": "world"
+    },
+    "gal": {
+      "he": "גלאטסראיי",
+      "en": "Galatasaray",
+      "emoji": "🦁",
+      "region": "world"
+    },
+    "ahl": {
+      "he": "אל אהלי",
+      "en": "Al Ahly",
+      "emoji": "🦅",
+      "region": "world"
+    },
+    "zam": {
+      "he": "זמאלכ",
+      "en": "Zamalek",
+      "emoji": "🏹",
+      "region": "world"
+    },
+    "per": {
+      "he": "פרספוליס",
+      "en": "Persepolis",
+      "emoji": "🟥",
+      "region": "world"
+    },
+    "est": {
+      "he": "אסתקלאל",
+      "en": "Esteghlal",
+      "emoji": "🟦",
+      "region": "world"
+    },
+    "bay": {
+      "he": "באיירן מינכן",
+      "en": "Bayern Munich",
+      "emoji": "🍺",
+      "region": "world"
+    },
+    "bvb": {
+      "he": "דורטמונד",
+      "en": "Borussia Dortmund",
+      "emoji": "🐝",
+      "region": "world"
+    },
+    "psg": {
+      "he": "פריז סן ז'רמן",
+      "en": "PSG",
+      "emoji": "🗼",
+      "region": "world"
+    },
+    "om": {
+      "he": "מארסיי",
+      "en": "Marseille",
+      "emoji": "⚓",
+      "region": "world"
+    }
+  },
+  "rivalries": {
+    "tlv": {
+      "a": "mta",
+      "b": "hta",
+      "he": "הדרבי התל אביבי",
+      "en": "Tel Aviv derby"
+    },
+    "ilc": {
+      "a": "mta",
+      "b": "mhf",
+      "he": "הקלאסיקו הישראלי",
+      "en": "Israeli Clasico"
+    },
+    "hfa": {
+      "a": "mhf",
+      "b": "hhf",
+      "he": "דרבי חיפה",
+      "en": "Haifa derby"
+    },
+    "jlm": {
+      "a": "bjr",
+      "b": "hjr",
+      "he": "דרבי ירושלים",
+      "en": "Jerusalem derby"
+    },
+    "sth": {
+      "a": "hbs",
+      "b": "mta",
+      "he": "באר שבע נגד מכבי",
+      "en": "Beer Sheva v Maccabi"
+    },
+    "clas": {
+      "a": "rma",
+      "b": "fcb",
+      "he": "אל קלאסיקו",
+      "en": "El Clasico"
+    },
+    "nwd": {
+      "a": "mun",
+      "b": "liv",
+      "he": "יונייטד נגד ליברפול",
+      "en": "North-West derby"
+    },
+    "mcr": {
+      "a": "mun",
+      "b": "mci",
+      "he": "דרבי מנצ'סטר",
+      "en": "Manchester derby"
+    },
+    "nld": {
+      "a": "ars",
+      "b": "tot",
+      "he": "דרבי צפון לונדון",
+      "en": "North London derby"
+    },
+    "mil": {
+      "a": "int",
+      "b": "acm",
+      "he": "דרבי מילאנו",
+      "en": "Derby della Madonnina"
+    },
+    "sup": {
+      "a": "boc",
+      "b": "riv",
+      "he": "סופרקלאסיקו",
+      "en": "Superclasico"
+    },
+    "ist": {
+      "a": "fen",
+      "b": "gal",
+      "he": "דרבי איסטנבול",
+      "en": "Intercontinental derby"
+    },
+    "cai": {
+      "a": "ahl",
+      "b": "zam",
+      "he": "דרבי קהיר",
+      "en": "Cairo derby"
+    },
+    "teh": {
+      "a": "per",
+      "b": "est",
+      "he": "דרבי טהרן",
+      "en": "Tehran derby"
+    },
+    "klas": {
+      "a": "bay",
+      "b": "bvb",
+      "he": "דר קלאסיקר",
+      "en": "Der Klassiker"
+    },
+    "fra": {
+      "a": "psg",
+      "b": "om",
+      "he": "לה קלאסיק",
+      "en": "Le Classique"
+    }
+  }
+}

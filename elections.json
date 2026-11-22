@@ -1,0 +1,56 @@
+{
+  "clubs": {
+    "right": {
+      "he": "ימין",
+      "en": "Right",
+      "emoji": "🔵",
+      "region": "il"
+    },
+    "left": {
+      "he": "שמאל",
+      "en": "Left",
+      "emoji": "🔴",
+      "region": "il"
+    },
+    "bibi": {
+      "he": "מחנה נתניהו",
+      "en": "Netanyahu camp",
+      "emoji": "🟦",
+      "region": "world"
+    },
+    "eisenkot": {
+      "he": "מחנה איזנקוט",
+      "en": "Eisenkot camp",
+      "emoji": "🟩",
+      "region": "world"
+    }
+  },
+  "rivalries": {
+    "rl": {
+      "a": "right",
+      "b": "left",
+      "he": "ימין מול שמאל",
+      "en": "Right v Left"
+    },
+    "be": {
+      "a": "bibi",
+      "b": "eisenkot",
+      "he": "נתניהו מול איזנקוט",
+      "en": "Netanyahu v Eisenkot"
+    }
+  },
+  "strings": {
+    "he": {
+      "pick_region": "באיזה קרב אתה?",
+      "il": "ימין מול שמאל",
+      "world": "נתניהו מול איזנקוט",
+      "pick_club": "באיזה צד אתה?",
+      "joined": "נרשמת למחנה {club}. אתה מספר {n} במפקד.",
+      "census": "📊 <b>מפקד המחנות</b>\n<i>מפקד של מי שנרשם לבוט, לא סקר ולא תחזית.</i>",
+      "pen_btn": "🗳 האתגר היומי",
+      "pen_shoot": "האתגר היומי נגד {rival}.\nבחר כיוון:",
+      "pen_dive": "ואיפה המחנה שלך מתגונן?",
+      "pen_result": "🗳 <b>האתגר היומי</b>\n{a} <b>{ga}</b> : <b>{gb}</b> {b}\nהשתתפו: {na} מול {nb}"
+    }
+  }
+}

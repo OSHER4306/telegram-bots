@@ -1,0 +1,6 @@
+[Unit]
+Description=Pull bot code from GitHub and restart bots when it changed
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/telegram-bots/update.sh

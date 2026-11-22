@@ -1,0 +1,72 @@
+{
+  "clubs": {
+    "btc": {
+      "he": "שבט הביטקוין",
+      "en": "Bitcoin tribe",
+      "emoji": "🟠",
+      "region": "world"
+    },
+    "eth": {
+      "he": "שבט האת'ריום",
+      "en": "Ethereum tribe",
+      "emoji": "🔷",
+      "region": "world"
+    },
+    "sol": {
+      "he": "שבט סולנה",
+      "en": "Solana tribe",
+      "emoji": "🟣",
+      "region": "world"
+    },
+    "doge": {
+      "he": "שבט הדוג'",
+      "en": "Doge tribe",
+      "emoji": "🐶",
+      "region": "world"
+    }
+  },
+  "rivalries": {
+    "be": {
+      "a": "btc",
+      "b": "eth",
+      "he": "ביטקוין מול את'ריום",
+      "en": "Bitcoin v Ethereum"
+    },
+    "es": {
+      "a": "eth",
+      "b": "sol",
+      "he": "את'ריום מול סולנה",
+      "en": "Ethereum v Solana"
+    },
+    "bd": {
+      "a": "btc",
+      "b": "doge",
+      "he": "ביטקוין מול דוג'",
+      "en": "Bitcoin v Doge"
+    }
+  },
+  "strings": {
+    "en": {
+      "pick_region": "Pick your tribe:",
+      "il": "Tribes",
+      "world": "Tribes",
+      "pick_club": "Which tribe are you?",
+      "census": "📊 <b>Tribe census</b>\n<i>A game with points only. Not investment advice.</i>",
+      "pen_btn": "⚔️ Daily battle",
+      "pen_shoot": "Today's battle against {rival}.\nPick a direction:",
+      "pen_dive": "And where does your tribe defend?",
+      "pen_result": "⚔️ <b>Daily battle</b>\n{a} <b>{ga}</b> : <b>{gb}</b> {b}\nPlayers: {na} v {nb}"
+    },
+    "he": {
+      "pick_region": "בחר שבט:",
+      "il": "שבטים",
+      "world": "שבטים",
+      "pick_club": "לאיזה שבט אתה שייך?",
+      "census": "📊 <b>מפקד השבטים</b>\n<i>משחק בנקודות בלבד, לא ייעוץ השקעות.</i>",
+      "pen_btn": "⚔️ הקרב היומי",
+      "pen_shoot": "הקרב היומי נגד {rival}.\nבחר כיוון:",
+      "pen_dive": "ואיפה השבט שלך מתגונן?",
+      "pen_result": "⚔️ <b>הקרב היומי</b>\n{a} <b>{ga}</b> : <b>{gb}</b> {b}\nשחקנים: {na} מול {nb}"
+    }
+  }
+}

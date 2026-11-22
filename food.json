@@ -1,0 +1,38 @@
+{
+  "clubs": {
+    "veg": {
+      "he": "צמחונים לנצח",
+      "en": "Veggies forever",
+      "emoji": "🥦",
+      "region": "il"
+    },
+    "meat": {
+      "he": "רק בשר",
+      "en": "Meat only",
+      "emoji": "🥩",
+      "region": "il"
+    }
+  },
+  "rivalries": {
+    "vm": {
+      "a": "veg",
+      "b": "meat",
+      "he": "צמחונים מול בשריים",
+      "en": "Veggies v Meat"
+    }
+  },
+  "strings": {
+    "he": {
+      "pick_region": "בוחרים צד:",
+      "il": "🥦 מול 🥩",
+      "world": "🥦 מול 🥩",
+      "pick_club": "באיזה צד אתה?",
+      "joined": "נרשמת ל{club}. אתה מספר {n} במפקד.",
+      "census": "📊 <b>מפקד הצלחת</b>",
+      "pen_btn": "🍽 הקרב היומי",
+      "pen_shoot": "הקרב היומי נגד {rival}.\nבחר כיוון:",
+      "pen_dive": "ואיפה הצד שלך מתגונן?",
+      "pen_result": "🍽 <b>הקרב היומי</b>\n{a} <b>{ga}</b> : <b>{gb}</b> {b}\nהשתתפו: {na} מול {nb}"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=Telegram bot %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/telegram-bots/%i.env
+Environment=PYTHONUNBUFFERED=1
+Environment=DB_PATH=/var/lib/telegram-bots/%i/bot.db
+ExecStart=/usr/bin/python3 /opt/telegram-bots/bot.py
+Restart=always
+RestartSec=5
+DynamicUser=yes
+StateDirectory=telegram-bots/%i
+
+[Install]
+WantedBy=multi-user.target
