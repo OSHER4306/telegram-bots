@@ -227,4 +227,19 @@ assert len(api8.sent(3)) == before[3] + 1 and "⏰" in api8.last(3)["text"]
 assert len(api8.sent(2)) == before[2] and len(api8.sent(4)) == before[4]
 b8.daily_reminder(); assert len(api8.sent(3)) == before[3] + 1   # once a day
 
+# 19. referral reward: recruiter is notified and gets 3 points, recruit gets 1
+msg(priv(900), user(900), "/start")
+cb(priv(900), user(900), "rg:il")
+cb(priv(900), user(900), "cl:hta")
+p0 = bot.user_points(900)
+msg(priv(901), user(901), "/start jhta_900")
+assert "+3" in api.last(900)["text"], api.last(900)["text"]
+assert bot.user_points(900) == p0 + 3 and bot.user_points(901) == 1
+
+# 20. inline share: card with census text and a personal recruit link
+bot.handle({"update_id": next(uid), "inline_query": {"id": "iq1", "from": user(900), "query": ""}})
+m, p = api.calls[-1]
+assert m == "answerInlineQuery" and "jhta_900" in str(p["results"][0]["reply_markup"])
+assert p["results"][0]["input_message_content"]["parse_mode"] == "HTML"
+
 print("ALL TESTS PASSED")
