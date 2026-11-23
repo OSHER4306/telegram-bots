@@ -283,4 +283,18 @@ assert "startgroup=raid" in str(api.last(50)["reply_markup"])
 msg(GB, user(60), "/start@DerbyTestBot raid")
 assert "Telegram Group Wars" in api.last(-2002)["text"]
 
+# 25. owner dashboard (private, owner only) with refresh, and group stats with exposure
+msg(priv(1), user(1), "/admin")
+assert "לוח ניהול" in api.last(1)["text"] and "callback_data': 'ad'" in str(api.last(1)["reply_markup"])
+assert "Barca Fans" in api.last(1)["text"]
+cb(priv(1), user(1), "ad")
+assert "לוח ניהול" in api.last(1)["text"]
+n_before = len(api.sent(50))
+msg(priv(50), user(50), "/admin")
+assert all("לוח ניהול" not in p["text"] for p in api.sent(50)[n_before:])
+msg(GB, user(60), "/stats")
+st = api.last(-2002)["text"]
+assert "Barca Fans stats" in st and "shown in other groups" in st
+assert bot.one("SELECT seen FROM clans WHERE id=-2002")["seen"] >= 1
+
 print("ALL TESTS PASSED")
