@@ -28,7 +28,10 @@ T = {
         "pick_club": "בחר את הקבוצה שלך:",
         "joined": "נרשמת כאוהד {club}. אתה אוהד מספר {n} שלה במפקד.",
         "census": "📊 <b>מפקד האוהדים</b>",
-        "invite": "הקישור שלך לגיוס אוהדים:\n{link}\nהבאת עד עכשיו: {n}",
+        "invite": "הקישור שלך לגיוס אוהדים:\n{link}\nהבאת עד עכשיו: {n}\nכל אוהד שמצטרף דרכך = 3 נקודות לך ונקודה לו.",
+        "ref_win": "🎉 {name} הצטרף ל{club} דרך הקישור שלך. +3 נקודות! הבאת כבר {n}.",
+        "inl_title": "שלח את מצב המפקד",
+        "inl_btn": "גם אני מצטרף",
         "change": "החלף קבוצה", "table": "📊 המפקד", "add_group": "➕ הוסף לקבוצה שלך",
         "group_hello": "Derby כאן. מנהל, בחר את הקבוצה שהקבוצה הזאת אוהדת:",
         "admin_only": "רק מנהל קבוצה יכול לבחור.",
@@ -78,7 +81,10 @@ T = {
         "pick_club": "Pick your club:",
         "joined": "You are registered as a {club} fan. You are fan number {n} in the census.",
         "census": "📊 <b>Fan census</b>",
-        "invite": "Your link to recruit fans:\n{link}\nRecruited so far: {n}",
+        "invite": "Your link to recruit fans:\n{link}\nRecruited so far: {n}\nEvery fan who joins through you = 3 points for you and 1 for them.",
+        "ref_win": "🎉 {name} joined {club} through your link. +3 points! You've brought {n}.",
+        "inl_title": "Send the census standings",
+        "inl_btn": "I'm joining too",
         "change": "Change club", "table": "📊 Census", "add_group": "➕ Add to your group",
         "group_hello": "Derby is here. Admin, pick the club this group supports:",
         "admin_only": "Only a group admin can pick.",
@@ -261,6 +267,10 @@ class Bot:
         ol = self.owner_lang()
         self.log("club", uid, "ev_club", name=esc(u["name"] if u else uid), club=self.club(cid, ol),
                  ref=self.t(ol, "ev_ref", ref=esc(r["name"])) if r else "")
+        if r:
+            rl = (self.one("SELECT lang FROM users WHERE id=?", u["ref_by"]) or {"lang": "he"})["lang"] or "he"
+            n = self.one("SELECT COUNT(*) c FROM users WHERE ref_by=? AND club IS NOT NULL", u["ref_by"])["c"]
+            self.send(u["ref_by"], self.t(rl, "ref_win", name=esc(u["name"] or "?"), club=self.club(cid, rl), n=n))
         return self.one("SELECT COUNT(*) c FROM users WHERE club=?", cid)["c"]
 
     def rivalries_of(self, cid):
@@ -304,7 +314,9 @@ class Bot:
     def user_points(self, uid):
         a = self.one("SELECT COALESCE(SUM(points),0) c FROM predictions WHERE user_id=?", uid)["c"]
         b = self.one("SELECT COALESCE(SUM(goal),0) c FROM pen WHERE user_id=?", uid)["c"]
-        return a + b
+        r = self.one("SELECT COUNT(*) c FROM users WHERE ref_by=? AND club IS NOT NULL", uid)["c"]
+        me = self.one("SELECT ref_by FROM users WHERE id=?", uid)
+        return a + b + 3 * r + (1 if me and me["ref_by"] else 0)
 
     def streak(self, uid):
         days = {r["day"] for r in self.db.execute("SELECT day FROM pen WHERE user_id=?", (uid,))}
@@ -388,6 +400,8 @@ class Bot:
             self.on_message(upd["message"])
         elif "callback_query" in upd:
             self.on_callback(upd["callback_query"])
+        elif "inline_query" in upd:
+            self.on_inline(upd["inline_query"])
         elif "my_chat_member" in upd:
             m = upd["my_chat_member"]
             if m["chat"]["type"] in ("group", "supergroup") and m["new_chat_member"]["status"] in ("member", "administrator") \
@@ -395,6 +409,21 @@ class Bot:
                 if not self.one("SELECT 1 FROM groups WHERE id=?", m["chat"]["id"]):
                     lang = "he" if (m["from"].get("language_code") or "").startswith("he") else "en"
                     self.send(m["chat"]["id"], self.t(lang, "group_hello"), self.region_kb(lang))
+
+    def on_inline(self, iq):
+        frm = iq["from"]
+        u = self.one("SELECT * FROM users WHERE id=?", frm["id"])
+        lang = (u and u["lang"]) or ("he" if (frm.get("language_code") or "").startswith("he") else "en")
+        cid = (u and u["club"]) or BRAND_CLUB or next(iter(CLUBS))
+        if cid not in CLUBS:
+            cid = next(iter(CLUBS))
+        text = self.census_text(cid, lang)
+        link = self.link(f"j{cid}_{frm['id']}")
+        self.api.call("answerInlineQuery", inline_query_id=iq["id"], cache_time=30, is_personal=True,
+                      results=[{"type": "article", "id": cid, "title": self.t(lang, "inl_title"),
+                                "description": self.club(cid, lang),
+                                "input_message_content": {"message_text": text, "parse_mode": "HTML"},
+                                "reply_markup": {"inline_keyboard": [[{"text": self.t(lang, "inl_btn"), "url": link}]]}}])
 
     def on_message(self, msg):
         text = msg.get("text") or ""
@@ -746,7 +775,7 @@ class Bot:
         print(f"Derby running as @{self.username}")
         while True:
             updates = self.api.call("getUpdates", offset=offset, timeout=50,
-                                    allowed_updates=["message", "callback_query", "my_chat_member"])
+                                    allowed_updates=["message", "callback_query", "my_chat_member", "inline_query"])
             try:
                 self.resolve_penalties()
             except Exception as e:
