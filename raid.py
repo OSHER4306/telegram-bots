@@ -11,6 +11,8 @@ RAID_SECONDS = 3600
 HIT_POWER = 10
 RAID_HIT = 5
 STEAL = 0.2
+SHOP = {"shield": (5, 3600), "boost": (10, 50)}  # stars price, effect (seconds of shield / power)
+RECAP_HOUR = 20  # Israel time, daily recap in active groups
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS clans(id INTEGER PRIMARY KEY, title TEXT, lang TEXT, power INTEGER DEFAULT 0,
@@ -19,6 +21,7 @@ CREATE TABLE IF NOT EXISTS rhits(day TEXT, user_id INTEGER, clan INTEGER, PRIMAR
 CREATE TABLE IF NOT EXISTS raids(id INTEGER PRIMARY KEY AUTOINCREMENT, attacker INTEGER, defender INTEGER,
   started INTEGER, ends INTEGER, atk INTEGER DEFAULT 0, def INTEGER DEFAULT 0, status TEXT DEFAULT 'live');
 CREATE TABLE IF NOT EXISTS rfight(raid INTEGER, user_id INTEGER, PRIMARY KEY(raid, user_id));
+CREATE TABLE IF NOT EXISTS purchases(ts INTEGER, user_id INTEGER, clan INTEGER, item TEXT, stars INTEGER, charge TEXT);
 """
 
 T = {
@@ -47,6 +50,18 @@ T = {
         "league": "🏆 <b>הליגה העולמית</b>",
         "your_rank": "\nאתם במקום <b>{r}</b> מתוך {n}",
         "group_only": "המשחק עובד בקבוצות. צרפו אותי לקבוצה 👇",
+        "revenge_btn": "🔥 נקמה",
+        "shop_btn": "🛒 חנות",
+        "shop": "🛒 <b>חנות השבט</b>\n🛡 מגן לשעה: אי אפשר לפשוט עליכם (5 ⭐)\n⚡ חיזוק: +50 כוח לשבט מיד (10 ⭐)",
+        "shield_btn": "🛡 מגן (5 ⭐)", "boost_btn": "⚡ חיזוק (10 ⭐)",
+        "inv_shield": "מגן לשעה", "inv_shield_d": "שעה שבה אף שבט לא יכול לפשוט על {clan}",
+        "inv_boost": "חיזוק כוח", "inv_boost_d": "+50 כוח ל{clan} מיד",
+        "paid_shield": "🛡 {name} הפעיל מגן! אף אחד לא יכול לפשוט על {clan} בשעה הקרובה.",
+        "paid_boost": "⚡ {name} חיזק את {clan}! +50 כוח. כוח השבט: <b>{power}</b>",
+        "shielded": "לשבט הזה יש מגן פעיל. נסו שבט אחר",
+        "recap": "🌙 <b>סיכום היום של {clan}</b>\n💪 כוח: <b>{power}</b> | מקום <b>{rank}</b> מתוך {n}\n👥 נתנו מכה היום: {today}\n{threat}\nמחר בבוקר המכות מתחדשות. מי שמביא קבוצה יריבה, מביא לנו יעד לפשיטה 👇",
+        "threat": "⚠️ {t} רק {d} כוח מאחוריכם",
+        "lead": "👑 אתם בראש הליגה!",
         "cstats": "📊 <b>הסטטיסטיקה של {clan}</b>\n\n💪 כוח: <b>{power}</b>\n🏆 מקום בליגה: <b>{rank}</b> מתוך {n}\n"
                   "⚔️ ניצחונות: {w} | הפסדים: {l}\n👥 חברים ששיחקו: <b>{players}</b> (היום: {today})\n"
                   "👁 השם שלכם הופיע בקבוצות אחרות: <b>{seen}</b> פעמים\n\nהשבט המוביל: {top}",
@@ -76,6 +91,18 @@ T = {
         "league": "🏆 <b>World league</b>",
         "your_rank": "\nYou are ranked <b>{r}</b> of {n}",
         "group_only": "The game works in groups. Add me to a group 👇",
+        "revenge_btn": "🔥 Revenge",
+        "shop_btn": "🛒 Shop",
+        "shop": "🛒 <b>Clan shop</b>\n🛡 One-hour shield: nobody can raid you (5 ⭐)\n⚡ Boost: +50 clan power now (10 ⭐)",
+        "shield_btn": "🛡 Shield (5 ⭐)", "boost_btn": "⚡ Boost (10 ⭐)",
+        "inv_shield": "One-hour shield", "inv_shield_d": "One hour in which no clan can raid {clan}",
+        "inv_boost": "Power boost", "inv_boost_d": "+50 power for {clan} right now",
+        "paid_shield": "🛡 {name} activated a shield! Nobody can raid {clan} for the next hour.",
+        "paid_boost": "⚡ {name} boosted {clan}! +50 power. Clan power: <b>{power}</b>",
+        "shielded": "This clan has an active shield. Try another one",
+        "recap": "🌙 <b>{clan} daily recap</b>\n💪 Power: <b>{power}</b> | Rank <b>{rank}</b> of {n}\n👥 Hit today: {today}\n{threat}\nHits reset tomorrow morning. Bring a rival group and we get a new raid target 👇",
+        "threat": "⚠️ {t} is only {d} power behind you",
+        "lead": "👑 You lead the league!",
         "cstats": "📊 <b>{clan} stats</b>\n\n💪 Power: <b>{power}</b>\n🏆 League rank: <b>{rank}</b> of {n}\n"
                   "⚔️ Wins: {w} | Losses: {l}\n👥 Members who played: <b>{players}</b> (today: {today})\n"
                   "👁 Your name was shown in other groups: <b>{seen}</b> times\n\nTop clan: {top}",
@@ -92,6 +119,11 @@ class RaidMixin:
 
     def raid_init(self):
         self.db.executescript(SCHEMA)
+        for col in ("shield_until INTEGER DEFAULT 0", "recap_day TEXT"):
+            try:
+                self.db.execute("ALTER TABLE clans ADD COLUMN " + col)
+            except Exception:
+                pass
         try:  # exposure counter: how many times a clan's name was shown in other groups
             self.db.execute("ALTER TABLE clans ADD COLUMN seen INTEGER DEFAULT 0")
         except Exception:
@@ -117,7 +149,8 @@ class RaidMixin:
         return [[{"text": self.rt(lang, "hit_btn"), "callback_data": "rh"},
                  {"text": self.rt(lang, "raid_btn"), "callback_data": "rr"}],
                 [{"text": self.rt(lang, "league_btn"), "callback_data": "rl"},
-                 {"text": self.rt(lang, "add_btn"), "url": self.link("raid", group=True)}]]
+                 {"text": self.rt(lang, "shop_btn"), "callback_data": "rs"}],
+                [{"text": self.rt(lang, "add_btn"), "url": self.link("raid", group=True)}]]
 
     def clan_hello(self, chat):
         c = self.clan(chat)
@@ -192,6 +225,8 @@ class RaidMixin:
                     c["id"], d["id"], d["id"], c["id"]):
             return "busy"
         now = int(self.now())
+        if (d["shield_until"] or 0) > now:
+            return "shielded"
         cur = self.q("INSERT INTO raids(attacker,defender,started,ends) VALUES(?,?,?,?)", c["id"], d["id"], now, now + RAID_SECONDS)
         rid = cur.lastrowid
         self.seen([c["id"]])
@@ -230,7 +265,9 @@ class RaidMixin:
             self.q("UPDATE raids SET status='done' WHERE id=?", r["id"])
             names = dict(w=html.escape(w["title"]), l=html.escape(l["title"]), wa=wa, la=la, p=prize)
             self.send(w["id"], self.rt(w["lang"], "won", **names), self.clan_kb(w["lang"]))
-            self.send(l["id"], self.rt(l["lang"], "lost", **names), self.clan_kb(l["lang"]))
+            self.send(l["id"], self.rt(l["lang"], "lost", **names),
+                      [[{"text": self.rt(l["lang"], "revenge_btn"), "callback_data": f"ra:{w['id']}"}]] + self.clan_kb(l["lang"]))
+        self.daily_recap()
 
     def raid_callback(self, kind, rest, chat, frm, answer):
         """Returns True when handled."""
@@ -238,9 +275,17 @@ class RaidMixin:
             answer("✅")
             self.send(chat["id"], self.admin_text(), [[{"text": "🔄 רענן", "callback_data": "ad"}]])
             return True
-        if kind not in ("rh", "rr", "rl", "ra", "rf") or chat["type"] == "private":
+        if kind not in ("rh", "rr", "rl", "ra", "rf", "rs", "rb") or chat["type"] == "private":
             return False
         c = self.clan(chat)
+        if kind == "rs":
+            answer()
+            self.send(chat["id"], self.rt(c["lang"], "shop"),
+                      [[{"text": self.rt(c["lang"], "shield_btn"), "callback_data": "rb:shield"},
+                        {"text": self.rt(c["lang"], "boost_btn"), "callback_data": "rb:boost"}]])
+        elif kind == "rb" and rest in SHOP:
+            answer()
+            self.send_invoice(c, rest)
         if kind == "rh":
             ok, text = self.do_hit(c, frm)
             answer(None if ok else text)
@@ -254,7 +299,7 @@ class RaidMixin:
             self.pick_target(c)
         elif kind == "ra" and rest.lstrip("-").isdigit():
             res = self.start_raid(c, int(rest))
-            answer(self.rt(c["lang"], "busy") if res == "busy" else None)
+            answer(self.rt(c["lang"], res) if res in ("busy", "shielded") else None)
         elif kind == "rf" and rest.isdigit():
             res = self.fight(int(rest), chat["id"], frm)
             answer(res if res and res != "ok" else None)
@@ -295,6 +340,9 @@ class RaidMixin:
             f"שבטים במשחק: <b>{c('SELECT COUNT(*) FROM clans')}</b> | חדשים ב-24 שעות: <b>{c('SELECT COUNT(*) FROM clans WHERE joined>=?', day_ago)}</b>",
             f"פשיטות: <b>{c('SELECT COUNT(*) FROM raids')}</b> (פתוחות עכשיו: {live})",
             f"חשיפות של שמות קבוצות בקבוצות אחרות: <b>{c('SELECT COALESCE(SUM(seen),0) FROM clans')}</b>",
+            "",
+            "<b>⭐ חנות</b>",
+            f"רכישות: <b>{c('SELECT COUNT(*) FROM purchases')}</b> | כוכבים: <b>{c('SELECT COALESCE(SUM(stars),0) FROM purchases')}</b>",
         ]
         top = self.db.execute("SELECT title, power, wins, seen FROM clans ORDER BY power DESC LIMIT 5").fetchall()
         if top:
@@ -312,3 +360,59 @@ class RaidMixin:
             lines += ["", "<b>💪 השחקנים הפעילים</b>"] + [
                 f"{i}. {html.escape(names.get(r['user_id']) or str(r['user_id']))} — {r['n']} מכות" for i, r in enumerate(hitters, 1)]
         return "\n".join(lines)
+
+    # ---------- Telegram Stars shop ----------
+    def send_invoice(self, c, item):
+        price = SHOP[item][0]
+        self.api.call("sendInvoice", chat_id=c["id"], title=self.rt(c["lang"], "inv_" + item),
+                      description=self.rt(c["lang"], "inv_" + item + "_d", clan=c["title"][:60]),
+                      payload=f"{item}:{c['id']}", provider_token="", currency="XTR",
+                      prices=[{"label": self.rt(c["lang"], "inv_" + item), "amount": price}])
+
+    def on_precheckout(self, pq):
+        item, _, cid = (pq.get("invoice_payload") or "").partition(":")
+        ok = item in SHOP and cid.lstrip("-").isdigit() and bool(self.one("SELECT 1 FROM clans WHERE id=?", int(cid)))
+        self.api.call("answerPreCheckoutQuery", pre_checkout_query_id=pq["id"], ok=ok,
+                      **({} if ok else {"error_message": "Unavailable"}))
+
+    def on_paid(self, msg):
+        sp = msg["successful_payment"]
+        item, _, cid = sp.get("invoice_payload", "").partition(":")
+        c = self.one("SELECT * FROM clans WHERE id=?", int(cid)) if cid.lstrip("-").isdigit() else None
+        if not c or item not in SHOP:
+            return
+        self.q("INSERT INTO purchases(ts,user_id,clan,item,stars,charge) VALUES(?,?,?,?,?,?)", int(self.now()),
+               msg["from"]["id"], c["id"], item, sp.get("total_amount", 0), sp.get("telegram_payment_charge_id", ""))
+        name = html.escape(msg["from"].get("first_name", "?"))
+        if item == "shield":
+            self.q("UPDATE clans SET shield_until=? WHERE id=?", int(self.now()) + SHOP["shield"][1], c["id"])
+            self.send(c["id"], self.rt(c["lang"], "paid_shield", name=name, clan=html.escape(c["title"])))
+        else:
+            self.q("UPDATE clans SET power=power+? WHERE id=?", SHOP["boost"][1], c["id"])
+            p = self.one("SELECT power FROM clans WHERE id=?", c["id"])["power"]
+            self.send(c["id"], self.rt(c["lang"], "paid_boost", name=name, clan=html.escape(c["title"]), power=p))
+
+    # ---------- daily recap in active groups ----------
+    def daily_recap(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        now = datetime.fromtimestamp(self.now(), ZoneInfo("Asia/Jerusalem"))
+        if now.hour < RECAP_HOUR:
+            return
+        day = self.pen_day()
+        clans = self.db.execute("SELECT * FROM clans ORDER BY power DESC, id").fetchall()
+        n = len(clans)
+        for i, c in enumerate(clans):
+            if c["recap_day"] == day:
+                continue
+            today = self.one("SELECT COUNT(*) n FROM rhits WHERE clan=? AND day=?", c["id"], day)["n"]
+            self.q("UPDATE clans SET recap_day=? WHERE id=?", day, c["id"])
+            if not today:
+                continue  # only groups that played today get a recap
+            if i == 0:
+                threat = self.rt(c["lang"], "lead")
+            else:
+                t = clans[i + 1] if i + 1 < n else None
+                threat = self.rt(c["lang"], "threat", t=html.escape(t["title"]), d=c["power"] - t["power"]) if t else ""
+            self.send(c["id"], self.rt(c["lang"], "recap", clan=html.escape(c["title"]), power=c["power"], rank=i + 1,
+                                       n=n, today=today, threat=threat), self.clan_kb(c["lang"]))
