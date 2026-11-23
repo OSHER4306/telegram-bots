@@ -47,6 +47,9 @@ T = {
         "league": "🏆 <b>הליגה העולמית</b>",
         "your_rank": "\nאתם במקום <b>{r}</b> מתוך {n}",
         "group_only": "המשחק עובד בקבוצות. צרפו אותי לקבוצה 👇",
+        "cstats": "📊 <b>הסטטיסטיקה של {clan}</b>\n\n💪 כוח: <b>{power}</b>\n🏆 מקום בליגה: <b>{rank}</b> מתוך {n}\n"
+                  "⚔️ ניצחונות: {w} | הפסדים: {l}\n👥 חברים ששיחקו: <b>{players}</b> (היום: {today})\n"
+                  "👁 השם שלכם הופיע בקבוצות אחרות: <b>{seen}</b> פעמים\n\nהשבט המוביל: {top}",
     },
     "en": {
         "hello": "⚔️ <b>This group is now a clan in the Telegram Group Wars!</b>\n\n"
@@ -73,6 +76,9 @@ T = {
         "league": "🏆 <b>World league</b>",
         "your_rank": "\nYou are ranked <b>{r}</b> of {n}",
         "group_only": "The game works in groups. Add me to a group 👇",
+        "cstats": "📊 <b>{clan} stats</b>\n\n💪 Power: <b>{power}</b>\n🏆 League rank: <b>{rank}</b> of {n}\n"
+                  "⚔️ Wins: {w} | Losses: {l}\n👥 Members who played: <b>{players}</b> (today: {today})\n"
+                  "👁 Your name was shown in other groups: <b>{seen}</b> times\n\nTop clan: {top}",
     },
 }
 
@@ -86,6 +92,14 @@ class RaidMixin:
 
     def raid_init(self):
         self.db.executescript(SCHEMA)
+        try:  # exposure counter: how many times a clan's name was shown in other groups
+            self.db.execute("ALTER TABLE clans ADD COLUMN seen INTEGER DEFAULT 0")
+        except Exception:
+            pass
+
+    def seen(self, ids):
+        for i in ids:
+            self.q("UPDATE clans SET seen=seen+1 WHERE id=?", i)
 
     def rt(self, lang, key, **kw):
         s = T.get(lang, T["en"]).get(key) or T["en"][key]
@@ -111,6 +125,13 @@ class RaidMixin:
 
     def raid_cmd(self, cmd, chat, frm):
         """Group commands. Returns True when handled."""
+        if cmd == "admin" and chat["type"] == "private" and frm["id"] == self.owner:
+            self.send(chat["id"], self.admin_text(), [[{"text": "🔄 רענן", "callback_data": "ad"}]])
+            return True
+        if cmd == "stats" and chat["type"] != "private":
+            c = self.clan(chat)
+            self.send(chat["id"], self.clan_stats(c))
+            return True
         if cmd not in ("clan", "raid", "league", "hit"):
             return False
         if chat["type"] == "private":
@@ -144,7 +165,9 @@ class RaidMixin:
 
     def league_text(self, c):
         lines = [self.rt(c["lang"], "league")]
-        for i, r in enumerate(self.league_rows(), 1):
+        rows = self.league_rows()
+        self.seen(r["id"] for r in rows if r["id"] != c["id"])
+        for i, r in enumerate(rows, 1):
             mark = " 👈" if r["id"] == c["id"] else ""
             lines.append(f"{i}. {html.escape(r['title'])} — <b>{r['power']}</b> ({r['wins']}W){mark}")
         n = self.one("SELECT COUNT(*) n FROM clans")["n"]
@@ -157,6 +180,7 @@ class RaidMixin:
         if not rows:
             return self.send(c["id"], self.rt(c["lang"], "no_targets"),
                              [[{"text": self.rt(c["lang"], "add_btn"), "url": self.link("raid", group=True)}]])
+        self.seen(r["id"] for r in rows)
         kb = [[{"text": f"{r['title'][:30]} ({r['power']})", "callback_data": f"ra:{r['id']}"}] for r in rows]
         self.send(c["id"], self.rt(c["lang"], "pick_target"), kb)
 
@@ -170,6 +194,7 @@ class RaidMixin:
         now = int(self.now())
         cur = self.q("INSERT INTO raids(attacker,defender,started,ends) VALUES(?,?,?,?)", c["id"], d["id"], now, now + RAID_SECONDS)
         rid = cur.lastrowid
+        self.seen([c["id"]])
         self.send(c["id"], self.rt(c["lang"], "raid_start", a=html.escape(c["title"]), d=html.escape(d["title"])),
                   [[{"text": self.rt(c["lang"], "fight_btn"), "callback_data": f"rf:{rid}"}]])
         self.send(d["id"], self.rt(d["lang"], "raid_alert", a=html.escape(c["title"])),
@@ -209,6 +234,10 @@ class RaidMixin:
 
     def raid_callback(self, kind, rest, chat, frm, answer):
         """Returns True when handled."""
+        if kind == "ad" and chat["type"] == "private" and frm["id"] == self.owner:
+            answer("✅")
+            self.send(chat["id"], self.admin_text(), [[{"text": "🔄 רענן", "callback_data": "ad"}]])
+            return True
         if kind not in ("rh", "rr", "rl", "ra", "rf") or chat["type"] == "private":
             return False
         c = self.clan(chat)
@@ -230,3 +259,56 @@ class RaidMixin:
             res = self.fight(int(rest), chat["id"], frm)
             answer(res if res and res != "ok" else None)
         return True
+
+    # ---------- stats ----------
+    def clan_stats(self, c):
+        c = self.one("SELECT * FROM clans WHERE id=?", c["id"])
+        day = self.pen_day()
+        players = self.one("SELECT COUNT(DISTINCT user_id) n FROM rhits WHERE clan=?", c["id"])["n"]
+        today = self.one("SELECT COUNT(*) n FROM rhits WHERE clan=? AND day=?", c["id"], day)["n"]
+        n = self.one("SELECT COUNT(*) n FROM clans")["n"]
+        rank = self.one("SELECT COUNT(*) n FROM clans WHERE power > ?", c["power"])["n"] + 1
+        top = self.one("SELECT title, power FROM clans ORDER BY power DESC, id LIMIT 1")
+        return self.rt(c["lang"], "cstats", clan=html.escape(c["title"]), power=c["power"], rank=rank, n=n,
+                       w=c["wins"], l=c["losses"], players=players, today=today, seen=c["seen"] or 0,
+                       top=f"{html.escape(top['title'])} ({top['power']})" if top else "-")
+
+    def admin_text(self):
+        c = lambda sql, *a: self.one(sql, *a)[0]
+        now = int(self.now())
+        day_ago = now - 86400
+        owner = self.owner or 0
+        live = c("SELECT COUNT(*) FROM raids WHERE status='live'")
+        lines = [
+            "📊 <b>לוח ניהול</b>",
+            "",
+            "<b>👥 משתמשים</b>",
+            f"סה״כ: <b>{c('SELECT COUNT(*) FROM users WHERE id<>?', owner)}</b> | חדשים ב-24 שעות: <b>{c('SELECT COUNT(*) FROM users WHERE joined>=? AND id<>?', day_ago, owner)}</b>",
+            f"הגיעו דרך הזמנה: <b>{c('SELECT COUNT(*) FROM users WHERE ref_by IS NOT NULL')}</b>",
+            "",
+            "<b>👆 פעולות</b>",
+            f"לחיצות והודעות ב-24 שעות: <b>{c('SELECT COUNT(*) FROM hits WHERE ts>=?', day_ago)}</b> | סה״כ: <b>{c('SELECT COUNT(*) FROM hits')}</b>",
+            f"משתמשים פעילים ב-24 שעות: <b>{c('SELECT COUNT(DISTINCT user_id) FROM hits WHERE ts>=?', day_ago)}</b>",
+            f"מכות יומיות היום: <b>{c('SELECT COUNT(*) FROM rhits WHERE day=?', self.pen_day())}</b>",
+            "",
+            "<b>⚔️ קבוצות</b>",
+            f"שבטים במשחק: <b>{c('SELECT COUNT(*) FROM clans')}</b> | חדשים ב-24 שעות: <b>{c('SELECT COUNT(*) FROM clans WHERE joined>=?', day_ago)}</b>",
+            f"פשיטות: <b>{c('SELECT COUNT(*) FROM raids')}</b> (פתוחות עכשיו: {live})",
+            f"חשיפות של שמות קבוצות בקבוצות אחרות: <b>{c('SELECT COALESCE(SUM(seen),0) FROM clans')}</b>",
+        ]
+        top = self.db.execute("SELECT title, power, wins, seen FROM clans ORDER BY power DESC LIMIT 5").fetchall()
+        if top:
+            lines += ["", "<b>🏆 השבטים המובילים</b>"] + [
+                f"{i}. {html.escape(r['title'])} — {r['power']} כוח, {r['wins']} ניצחונות, {r['seen'] or 0} חשיפות"
+                for i, r in enumerate(top, 1)]
+        refs = self.db.execute("SELECT r.name, COUNT(*) n FROM users u JOIN users r ON r.id=u.ref_by "
+                               "GROUP BY r.id ORDER BY n DESC LIMIT 5").fetchall()
+        if refs:
+            lines += ["", "<b>🤝 המגייסים המובילים</b>"] + [
+                f"{i}. {html.escape(r['name'] or '?')} — {r['n']}" for i, r in enumerate(refs, 1)]
+        hitters = self.db.execute("SELECT user_id, COUNT(*) n FROM rhits GROUP BY user_id ORDER BY n DESC LIMIT 5").fetchall()
+        if hitters:
+            names = {r["id"]: r["name"] for r in self.db.execute("SELECT id, name FROM users")}
+            lines += ["", "<b>💪 השחקנים הפעילים</b>"] + [
+                f"{i}. {html.escape(names.get(r['user_id']) or str(r['user_id']))} — {r['n']} מכות" for i, r in enumerate(hitters, 1)]
+        return "\n".join(lines)
