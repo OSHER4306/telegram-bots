@@ -297,4 +297,46 @@ st = api.last(-2002)["text"]
 assert "Barca Fans stats" in st and "shown in other groups" in st
 assert bot.one("SELECT seen FROM clans WHERE id=-2002")["seen"] >= 1
 
+# 26. Stars shop: invoice in XTR, pre-checkout approved, payment applies the shield, shield blocks raids
+cb(GA, user(50), "rs")
+assert "rb:shield" in str(api.last(-2001)["reply_markup"])
+cb(GA, user(50), "rb:shield")
+m, p = api.calls[-1]
+assert m == "sendInvoice" and p["currency"] == "XTR" and p["prices"][0]["amount"] == 5 and p["payload"] == "shield:-2002" or p["payload"] == "shield:-2001"
+bot.handle({"update_id": next(uid), "pre_checkout_query": {"id": "pq1", "from": user(50), "invoice_payload": "shield:-2001"}})
+m, p = api.calls[-1]
+assert m == "answerPreCheckoutQuery" and p["ok"] is True
+bot.handle({"update_id": next(uid), "message": {"chat": GA, "from": user(50),
+            "successful_payment": {"invoice_payload": "shield:-2001", "total_amount": 5, "telegram_payment_charge_id": "x1"}}})
+assert "🛡" in api.last(-2001)["text"]
+cb(GB, user(60), "ra:-2001")
+m, p = api.calls[-1]
+assert m == "answerCallbackQuery" and "shield" in p.get("text", "")
+bot.handle({"update_id": next(uid), "message": {"chat": GB, "from": user(60),
+            "successful_payment": {"invoice_payload": "boost:-2002", "total_amount": 10, "telegram_payment_charge_id": "x2"}}})
+assert bot.one("SELECT power FROM clans WHERE id=-2002")["power"] == 58
+msg(priv(1), user(1), "/admin")
+assert "כוכבים: <b>15</b>" in api.last(1)["text"]
+
+# 27. revenge button after a loss + daily recap only in groups that played today
+clock[0] += 3600
+cb(GB, user(60), "ra:-2001")
+rid2 = bot.one("SELECT MAX(id) m FROM raids")["m"]
+cb(GA, user(50), f"rf:{rid2}")
+clock[0] += 3601
+bot.resolve_raids()
+assert "ra:-2001" in str(api.sent(-2002)[-1]["reply_markup"]) or "ra:-2001" in str(api.sent(-2002)[-2].get("reply_markup"))
+day = bot.pen_day()
+bot.q("UPDATE clans SET recap_day=NULL")
+from datetime import datetime as _dt
+from zoneinfo import ZoneInfo as _Z
+while _dt.fromtimestamp(clock[0], _Z("Asia/Jerusalem")).hour != 20:
+    clock[0] += 900
+bot.q("INSERT OR IGNORE INTO rhits VALUES(?,?,?)", bot.pen_day(), 777, -2001)
+bot.daily_recap()
+recaps = [p for p in api.sent(-2001) if "סיכום היום" in p["text"]]
+assert len(recaps) == 1
+bot.daily_recap()
+assert len([p for p in api.sent(-2001) if "סיכום היום" in p["text"]]) == 1
+
 print("ALL TESTS PASSED")
