@@ -63,6 +63,8 @@ T = {
         "w_dare_text": "אני ב{club} והם כבר מובילים על {rival} במלחמת האוהדים. אוהד של {rival}? בוא נראה אותך:",
         "w_league": "🌍 <b>ליגת האוהדים העולמית</b>",
         "w_need_club": "קודם בוחרים קבוצה 👇",
+        "w_amb": "\n\n🏆 <b>שגרירי השבוע</b> (מי שהביא הכי הרבה אוהדים):\n{rows}",
+        "w_amb_you": "\nאתה הבאת השבוע: <b>{n}</b>",
         "revenge_btn": "🔥 נקמה",
         "shop_btn": "🛒 חנות",
         "shop": "🛒 <b>חנות השבט</b>\n🛡 מגן לשעה: אי אפשר לפשוט עליכם (5 ⭐)\n⚡ חיזוק: +50 כוח לשבט מיד (10 ⭐)",
@@ -115,6 +117,8 @@ T = {
         "w_dare_text": "I'm with {club} and we're beating {rival} in the fan war. {rival} fan? Let's see you:",
         "w_league": "🌍 <b>World fan league</b>",
         "w_need_club": "Pick your club first 👇",
+        "w_amb": "\n\n🏆 <b>Ambassadors of the week</b> (most fans recruited):\n{rows}",
+        "w_amb_you": "\nYou recruited this week: <b>{n}</b>",
         "revenge_btn": "🔥 Revenge",
         "shop_btn": "🛒 Shop",
         "shop": "🛒 <b>Clan shop</b>\n🛡 One-hour shield: nobody can raid you (5 ⭐)\n⚡ Boost: +50 clan power now (10 ⭐)",
@@ -467,7 +471,7 @@ class RaidMixin:
             rows = self.db.execute("SELECT club, power FROM cpower ORDER BY power DESC LIMIT 15").fetchall()
             lines = [self.rt(lang, "w_league")] + [f"{i}. {self.club(r['club'], lang)} — <b>{r['power']}</b>"
                                                   for i, r in enumerate(rows, 1)]
-            return self.send(u["id"], "\n".join(lines), [self.world_kb_row(lang)])
+            return self.send(u["id"], "\n".join(lines) + self.ambassadors(u, lang), [self.world_kb_row(lang)])
         if not u["club"]:
             return self.send(u["id"], self.rt(lang, "w_need_club"), self.region_kb(lang))
         club, rival = u["club"], self.rival_of(u["club"])
@@ -488,4 +492,15 @@ class RaidMixin:
         status = (self.rt(lang, "w_ahead", d=p - rp) if p > rp else
                   self.rt(lang, "w_behind", d=rp - p) if p < rp else self.rt(lang, "w_tie"))
         self.send(u["id"], self.rt(lang, "w_hit", club=self.club(club, lang), p=p,
-                                   rival=self.club(rival, lang) if rival else "-", rp=rp, status=status), dare + league)
+                                   rival=self.club(rival, lang) if rival else "-", rp=rp, status=status)
+                  + self.ambassadors(u, lang), dare + league)
+
+    def ambassadors(self, u, lang):
+        week = int(self.now()) - 7 * 86400
+        rows = self.db.execute("SELECT r.name, r.club, COUNT(*) n FROM users x JOIN users r ON r.id=x.ref_by "
+                               "WHERE x.joined>=? GROUP BY r.id ORDER BY n DESC, r.id LIMIT 3", (week,)).fetchall()
+        mine = self.one("SELECT COUNT(*) n FROM users WHERE ref_by=? AND joined>=?", u["id"], week)["n"]
+        medals = ["🥇", "🥈", "🥉"]
+        body = "\n".join(f"{medals[i]} {html.escape(r['name'] or '?')} — {r['n']}" for i, r in enumerate(rows))
+        out = self.rt(lang, "w_amb", rows=body) if rows else ""
+        return out + self.rt(lang, "w_amb_you", n=mine)
