@@ -297,7 +297,7 @@ class Bot(RaidMixin):
         return [btns[i:i + 2] for i in range(0, len(btns), 2)]
 
     def home_kb(self, lang):
-        return [[{"text": self.t(lang, "pen_btn"), "callback_data": "pn"}],
+        return [self.world_kb_row(lang), [{"text": self.t(lang, "pen_btn"), "callback_data": "pn"}],
                 [{"text": self.t(lang, "table"), "callback_data": "tb"},
                  {"text": self.t(lang, "change"), "callback_data": "chg"}],
                 [{"text": self.t(lang, "add_group"), "url": self.link("new", group=True)}]]
