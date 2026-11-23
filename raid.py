@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS rhits(day TEXT, user_id INTEGER, clan INTEGER, PRIMAR
 CREATE TABLE IF NOT EXISTS raids(id INTEGER PRIMARY KEY AUTOINCREMENT, attacker INTEGER, defender INTEGER,
   started INTEGER, ends INTEGER, atk INTEGER DEFAULT 0, def INTEGER DEFAULT 0, status TEXT DEFAULT 'live');
 CREATE TABLE IF NOT EXISTS rfight(raid INTEGER, user_id INTEGER, PRIMARY KEY(raid, user_id));
+CREATE TABLE IF NOT EXISTS cpower(club TEXT PRIMARY KEY, power INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS uhits(day TEXT, user_id INTEGER, club TEXT, PRIMARY KEY(day, user_id));
 CREATE TABLE IF NOT EXISTS purchases(ts INTEGER, user_id INTEGER, clan INTEGER, item TEXT, stars INTEGER, charge TEXT);
 """
 
@@ -50,6 +52,17 @@ T = {
         "league": "🏆 <b>הליגה העולמית</b>",
         "your_rank": "\nאתם במקום <b>{r}</b> מתוך {n}",
         "group_only": "המשחק עובד בקבוצות. צרפו אותי לקבוצה 👇",
+        "w_hit_btn": "⚔️ מכה לקבוצה שלי (+10)",
+        "w_league_btn": "🌍 ליגת האוהדים העולמית",
+        "w_hit": "⚔️ <b>+10 כוח ל{club}!</b>\n\n{club}: <b>{p}</b>\n{rival}: <b>{rp}</b>\n\n{status}\nמחר יש מכה חדשה. כל חבר שמצטרף דרכך = עוד 3 נקודות לך.",
+        "w_ahead": "🔥 אתם מובילים ב-{d}!",
+        "w_behind": "😤 אתם מפגרים ב-{d}. תביא עוד אוהד!",
+        "w_tie": "⚖️ שוויון מוחלט!",
+        "w_done": "כבר נתת מכה היום. חזור מחר, ובינתיים תביא חבר 👇",
+        "w_dare_btn": "📣 שלח לאוהד של {rival}",
+        "w_dare_text": "אני ב{club} והם כבר מובילים על {rival} במלחמת האוהדים. אוהד של {rival}? בוא נראה אותך:",
+        "w_league": "🌍 <b>ליגת האוהדים העולמית</b>",
+        "w_need_club": "קודם בוחרים קבוצה 👇",
         "revenge_btn": "🔥 נקמה",
         "shop_btn": "🛒 חנות",
         "shop": "🛒 <b>חנות השבט</b>\n🛡 מגן לשעה: אי אפשר לפשוט עליכם (5 ⭐)\n⚡ חיזוק: +50 כוח לשבט מיד (10 ⭐)",
@@ -91,6 +104,17 @@ T = {
         "league": "🏆 <b>World league</b>",
         "your_rank": "\nYou are ranked <b>{r}</b> of {n}",
         "group_only": "The game works in groups. Add me to a group 👇",
+        "w_hit_btn": "⚔️ Hit for my club (+10)",
+        "w_league_btn": "🌍 World fan league",
+        "w_hit": "⚔️ <b>+10 power for {club}!</b>\n\n{club}: <b>{p}</b>\n{rival}: <b>{rp}</b>\n\n{status}\nNew hit tomorrow. Every friend who joins through you = 3 more points for you.",
+        "w_ahead": "🔥 You lead by {d}!",
+        "w_behind": "😤 You're {d} behind. Bring another fan!",
+        "w_tie": "⚖️ Dead even!",
+        "w_done": "You already hit today. Come back tomorrow, and bring a friend meanwhile 👇",
+        "w_dare_btn": "📣 Dare a {rival} fan",
+        "w_dare_text": "I'm with {club} and we're beating {rival} in the fan war. {rival} fan? Let's see you:",
+        "w_league": "🌍 <b>World fan league</b>",
+        "w_need_club": "Pick your club first 👇",
         "revenge_btn": "🔥 Revenge",
         "shop_btn": "🛒 Shop",
         "shop": "🛒 <b>Clan shop</b>\n🛡 One-hour shield: nobody can raid you (5 ⭐)\n⚡ Boost: +50 clan power now (10 ⭐)",
@@ -271,6 +295,9 @@ class RaidMixin:
 
     def raid_callback(self, kind, rest, chat, frm, answer):
         """Returns True when handled."""
+        if kind in ("wh", "wl") and chat["type"] == "private":
+            answer()
+            return self.world_callback(kind, frm) or True
         if kind == "ad" and chat["type"] == "private" and frm["id"] == self.owner:
             answer("✅")
             self.send(chat["id"], self.admin_text(), [[{"text": "🔄 רענן", "callback_data": "ad"}]])
@@ -335,6 +362,7 @@ class RaidMixin:
             f"לחיצות והודעות ב-24 שעות: <b>{c('SELECT COUNT(*) FROM hits WHERE ts>=?', day_ago)}</b> | סה״כ: <b>{c('SELECT COUNT(*) FROM hits')}</b>",
             f"משתמשים פעילים ב-24 שעות: <b>{c('SELECT COUNT(DISTINCT user_id) FROM hits WHERE ts>=?', day_ago)}</b>",
             f"מכות יומיות היום: <b>{c('SELECT COUNT(*) FROM rhits WHERE day=?', self.pen_day())}</b>",
+            f"מכות במלחמת האוהדים היום: <b>{c('SELECT COUNT(*) FROM uhits WHERE day=?', self.pen_day())}</b> | סה״כ: <b>{c('SELECT COUNT(*) FROM uhits')}</b>",
             "",
             "<b>⚔️ קבוצות</b>",
             f"שבטים במשחק: <b>{c('SELECT COUNT(*) FROM clans')}</b> | חדשים ב-24 שעות: <b>{c('SELECT COUNT(*) FROM clans WHERE joined>=?', day_ago)}</b>",
@@ -416,3 +444,48 @@ class RaidMixin:
                 threat = self.rt(c["lang"], "threat", t=html.escape(t["title"]), d=c["power"] - t["power"]) if t else ""
             self.send(c["id"], self.rt(c["lang"], "recap", clan=html.escape(c["title"]), power=c["power"], rank=i + 1,
                                        n=n, today=today, threat=threat), self.clan_kb(c["lang"]))
+
+    # ---------- world fan war: solo play, no group or admin needed ----------
+    def world_kb_row(self, lang):
+        return [{"text": self.rt(lang, "w_hit_btn"), "callback_data": "wh"}]
+
+    def cpow(self, club):
+        r = self.one("SELECT power FROM cpower WHERE club=?", club)
+        return r["power"] if r else 0
+
+    def rival_of(self, club):
+        rs = self.rivalries_of(club)
+        if not rs:
+            return None
+        r = rs[0][1]
+        return r["b"] if r["a"] == club else r["a"]
+
+    def world_callback(self, kind, frm):
+        u = self.user(frm)
+        lang = u["lang"]
+        if kind == "wl":
+            rows = self.db.execute("SELECT club, power FROM cpower ORDER BY power DESC LIMIT 15").fetchall()
+            lines = [self.rt(lang, "w_league")] + [f"{i}. {self.club(r['club'], lang)} — <b>{r['power']}</b>"
+                                                  for i, r in enumerate(rows, 1)]
+            return self.send(u["id"], "\n".join(lines), [self.world_kb_row(lang)])
+        if not u["club"]:
+            return self.send(u["id"], self.rt(lang, "w_need_club"), self.region_kb(lang))
+        club, rival = u["club"], self.rival_of(u["club"])
+        day = self.pen_day()
+        dare = []
+        if rival:
+            import urllib.parse
+            link = self.link(f"j{rival}_{u['id']}")
+            text = self.rt(lang, "w_dare_text", club=self.club(club, lang), rival=self.club(rival, lang))
+            dare = [[{"text": self.rt(lang, "w_dare_btn", rival=self.club(rival, lang)),
+                      "url": "https://t.me/share/url?" + urllib.parse.urlencode({"url": link, "text": text})}]]
+        league = [[{"text": self.rt(lang, "w_league_btn"), "callback_data": "wl"}]]
+        if self.one("SELECT 1 FROM uhits WHERE day=? AND user_id=?", day, u["id"]):
+            return self.send(u["id"], self.rt(lang, "w_done"), dare + league)
+        self.q("INSERT INTO uhits VALUES(?,?,?)", day, u["id"], club)
+        self.q("INSERT INTO cpower(club, power) VALUES(?, ?) ON CONFLICT(club) DO UPDATE SET power=power+?", club, 10, 10)
+        p, rp = self.cpow(club), self.cpow(rival) if rival else 0
+        status = (self.rt(lang, "w_ahead", d=p - rp) if p > rp else
+                  self.rt(lang, "w_behind", d=rp - p) if p < rp else self.rt(lang, "w_tie"))
+        self.send(u["id"], self.rt(lang, "w_hit", club=self.club(club, lang), p=p,
+                                   rival=self.club(rival, lang) if rival else "-", rp=rp, status=status), dare + league)
