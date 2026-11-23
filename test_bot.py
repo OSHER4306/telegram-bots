@@ -357,4 +357,11 @@ assert "World fan league" in api.last(911)["text"]
 msg(priv(1), user(1), "/admin")
 assert "מלחמת האוהדים היום: <b>2</b>" in api.last(1)["text"]
 
+# 29. ambassadors of the week: recruiters ranked, shown after a hit and in the league
+cb(priv(911), user(911, "en"), "wl")
+assert "Ambassadors of the week" in api.last(911)["text"] and "U910" in api.last(911)["text"]
+msg(priv(912), user(912), "/start jfcb_910")
+cb(priv(912), user(912), "wh")
+assert "שגרירי השבוע" in api.last(912)["text"] and "U910 — 2" in api.last(912)["text"]
+
 print("ALL TESTS PASSED")
