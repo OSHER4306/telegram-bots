@@ -339,4 +339,22 @@ assert len(recaps) == 1
 bot.daily_recap()
 assert len([p for p in api.sent(-2001) if "סיכום היום" in p["text"]]) == 1
 
+# 28. world fan war: solo daily hit for your club, rival comparison, dare link to the rival's join page, league
+msg(priv(910), user(910), "/start jfcb")
+home = api.last(910)
+assert "callback_data': 'wh'" in str(home["reply_markup"])
+cb(priv(910), user(910), "wh")
+r = api.last(910)
+assert "+10" in r["text"] and "jrma_910" in str(r["reply_markup"])
+cb(priv(910), user(910), "wh")
+assert "כבר נתת" in api.last(910)["text"]
+msg(priv(911), user(911, "en"), "/start jrma_910")
+cb(priv(911), user(911, "en"), "wh")
+assert "Real Madrid" in api.last(911)["text"] and "Dead even" in api.last(911)["text"]
+assert bot.one("SELECT ref_by FROM users WHERE id=911")["ref_by"] == 910
+cb(priv(911), user(911, "en"), "wl")
+assert "World fan league" in api.last(911)["text"]
+msg(priv(1), user(1), "/admin")
+assert "מלחמת האוהדים היום: <b>2</b>" in api.last(1)["text"]
+
 print("ALL TESTS PASSED")
