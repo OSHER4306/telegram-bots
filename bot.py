@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from raid import RaidMixin
+
 HERE = Path(__file__).parent
 DATA = json.loads((HERE / os.environ.get("TOPIC_FILE", "clubs.json")).read_text(encoding="utf-8"))
 CLUBS, RIVALRIES = DATA["clubs"], DATA["rivalries"]
@@ -178,12 +180,13 @@ def points(hg, ag, rh, ra):
     return OUTCOME if sign(hg, ag) == sign(rh, ra) else 0
 
 
-class Bot:
+class Bot(RaidMixin):
     def __init__(self, api, db_path="derby.db", owner_id=0, now=time.time):
         self.api, self.owner, self.now = api, int(owner_id or 0), now
         self.db = sqlite3.connect(db_path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        self.raid_init()
         try:  # databases created before reminders existed
             self.db.execute("ALTER TABLE users ADD COLUMN quiet INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
@@ -406,6 +409,7 @@ class Bot:
             m = upd["my_chat_member"]
             if m["chat"]["type"] in ("group", "supergroup") and m["new_chat_member"]["status"] in ("member", "administrator") \
                     and m["old_chat_member"]["status"] in ("left", "kicked"):
+                self.clan_hello(m["chat"])
                 if not self.one("SELECT 1 FROM groups WHERE id=?", m["chat"]["id"]):
                     lang = "he" if (m["from"].get("language_code") or "").startswith("he") else "en"
                     self.send(m["chat"]["id"], self.t(lang, "group_hello"), self.region_kb(lang))
@@ -434,6 +438,8 @@ class Bot:
         args = parts[1:]
         chat, frm = msg["chat"], msg["from"]
         private = chat["type"] == "private"
+        if self.raid_cmd(cmd, chat, frm):
+            return
         if cmd == "start":
             return self.start_private(frm, args) if private else self.start_group(chat, frm, args)
         if cmd in ("table", "census"):
@@ -510,6 +516,8 @@ class Bot:
 
     def start_group(self, chat, frm, args):
         payload = args[0] if args else ""
+        if payload == "raid":
+            return self.clan_hello(chat)
         lang = "he" if (frm.get("language_code") or "").startswith("he") else "en"
         g = self.one("SELECT * FROM groups WHERE id=?", chat["id"])
         if payload.startswith("c") and payload[1:].isdigit():
@@ -556,6 +564,8 @@ class Bot:
         lang = u["lang"]
         answer = lambda text=None: self.api.call("answerCallbackQuery", callback_query_id=cb["id"], **({"text": text} if text else {}))
         kind, _, rest = data.partition(":")
+        if self.raid_callback(kind, rest, chat, frm, answer):
+            return
         if kind == "rg" and rest in ("il", "world"):
             answer()
             return self.send(chat["id"], self.t(lang, "pick_club"), self.clubs_kb(rest, lang))
@@ -776,6 +786,10 @@ class Bot:
         while True:
             updates = self.api.call("getUpdates", offset=offset, timeout=50,
                                     allowed_updates=["message", "callback_query", "my_chat_member", "inline_query"])
+            try:
+                self.resolve_raids()
+            except Exception as e:
+                print("raid error", e)
             try:
                 self.resolve_penalties()
             except Exception as e:
