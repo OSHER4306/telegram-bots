@@ -242,4 +242,45 @@ m, p = api.calls[-1]
 assert m == "answerInlineQuery" and "jhta_900" in str(p["results"][0]["reply_markup"])
 assert p["results"][0]["input_message_content"]["parse_mode"] == "HTML"
 
+# 21. RAID: bot joins a group -> clan created with game buttons
+GA = {"id": -2001, "type": "supergroup", "title": "אוהדי באר שבע"}
+GB = {"id": -2002, "type": "supergroup", "title": "Barca Fans"}
+for g in (GA, GB):
+    bot.handle({"update_id": next(uid), "my_chat_member": {"chat": g, "from": user(1),
+                "old_chat_member": {"status": "left"}, "new_chat_member": {"status": "member"}}})
+assert bot.one("SELECT lang FROM clans WHERE id=-2001")["lang"] == "he"
+assert bot.one("SELECT lang FROM clans WHERE id=-2002")["lang"] == "en"
+assert any("callback_data': 'rh'" in str(p.get("reply_markup")) for p in api.sent(-2001))
+
+# 22. daily hit: once per user per day
+cb(GA, user(50), "rh"); cb(GA, user(51), "rh"); cb(GA, user(50), "rh")
+assert bot.one("SELECT power FROM clans WHERE id=-2001")["power"] == 20
+cb(GB, user(60), "rh")
+assert bot.one("SELECT power FROM clans WHERE id=-2002")["power"] == 10
+
+# 23. raid: A attacks B, both groups alerted, fight once each, winner takes power
+cb(GA, user(50), "rr")
+assert "ra:-2002" in str(api.last(-2001)["reply_markup"])
+cb(GA, user(50), "ra:-2002")
+rid = bot.one("SELECT id FROM raids")["id"]
+assert "🚨" in api.last(-2002)["text"]
+cb(GA, user(50), f"rf:{rid}"); cb(GA, user(51), f"rf:{rid}"); cb(GA, user(51), f"rf:{rid}")
+cb(GB, user(60), f"rf:{rid}")
+r = bot.one("SELECT atk, def FROM raids WHERE id=?", rid)
+assert (r["atk"], r["def"]) == (10, 5)
+clock[0] += 3601
+bot.resolve_raids()
+assert bot.one("SELECT power, wins FROM clans WHERE id=-2001")["wins"] == 1
+assert bot.one("SELECT power FROM clans WHERE id=-2001")["power"] == 22
+assert bot.one("SELECT power FROM clans WHERE id=-2002")["power"] == 8
+assert "🏆" in api.sent(-2001)[-1]["text"] and "Defeat" in api.sent(-2002)[-1]["text"]
+
+# 24. league + private command points to groups
+msg(GA, user(50), "/league")
+assert "22" in api.last(-2001)["text"]
+msg(priv(50), user(50), "/raid")
+assert "startgroup=raid" in str(api.last(50)["reply_markup"])
+msg(GB, user(60), "/start@DerbyTestBot raid")
+assert "Telegram Group Wars" in api.last(-2002)["text"]
+
 print("ALL TESTS PASSED")
