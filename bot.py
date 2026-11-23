@@ -399,7 +399,11 @@ class Bot(RaidMixin):
                 self.q("INSERT INTO hits VALUES(?,?,?)", int(self.now()), frm["id"], kind)
         except Exception as e:
             print("hit error", e)
-        if "message" in upd:
+        if "message" in upd and "successful_payment" in upd["message"]:
+            self.on_paid(upd["message"])
+        elif "pre_checkout_query" in upd:
+            self.on_precheckout(upd["pre_checkout_query"])
+        elif "message" in upd:
             self.on_message(upd["message"])
         elif "callback_query" in upd:
             self.on_callback(upd["callback_query"])
@@ -785,7 +789,7 @@ class Bot(RaidMixin):
         print(f"Derby running as @{self.username}")
         while True:
             updates = self.api.call("getUpdates", offset=offset, timeout=50,
-                                    allowed_updates=["message", "callback_query", "my_chat_member", "inline_query"])
+                                    allowed_updates=["message", "callback_query", "my_chat_member", "inline_query", "pre_checkout_query"])
             try:
                 self.resolve_raids()
             except Exception as e:
