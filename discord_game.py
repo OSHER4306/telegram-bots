@@ -12,7 +12,7 @@ import sqlite3
 import threading
 import time
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 
 API = "https://discord.com/api/v10"
 UA = "DiscordBot (https://t.me/DerbyFanWarBot, 1.0)"
@@ -35,7 +35,7 @@ T = {
         "need_team": "⚽ Pick your team first: type **/team** and choose your club.",
         "bad_team": "Couldn't find that club. Type **/team** and pick one from the list.",
         "joined": "{e} You're in! You fight for **{c}** in the world Fan War ({n} fans on your side).\nNow type **/hit** to add points to your club today.",
-        "hit": "💥 +10 for **{c}**!\n{c}: **{p}** points (#{rank} in the world)\n{r}: **{rp}** points\n{status}\n\nCome back tomorrow for another hit. Bring friends: every fan = more points.",
+        "hit": "💥 +10 for **{c}**!\n{c}: **{p}** points (#{rank} in the world)\n{r}: **{rp}** points\n{status}\n🔥 Streak: **{streak}** day(s) in a row\n\n⚔️ Challenge a rival fan: **/duel @friend**\nCome back tomorrow to keep your streak.",
         "ahead": "🔥 You're ahead of your rivals by {d}!",
         "behind": "⚠️ Your rivals lead by {d}. Call your friends!",
         "tie": "⚖️ Dead even with your rivals!",
@@ -61,7 +61,7 @@ T = {
         "need_team": "⚽ קודם בחר קבוצה: כתוב **/team** ובחר את הקבוצה שלך.",
         "bad_team": "לא מצאתי את הקבוצה. כתוב **/team** ובחר מהרשימה.",
         "joined": "{e} נכנסת! אתה נלחם בשביל **{c}** במלחמת האוהדים העולמית ({n} אוהדים בצד שלך).\nעכשיו כתוב **/hit** כדי להוסיף נקודות לקבוצה היום.",
-        "hit": "💥 +10 ל**{c}**!\n{c}: **{p}** נקודות (מקום {rank} בעולם)\n{r}: **{rp}** נקודות\n{status}\n\nתחזור מחר למכה נוספת. תביא חברים: כל אוהד = עוד נקודות.",
+        "hit": "💥 +10 ל**{c}**!\n{c}: **{p}** נקודות (מקום {rank} בעולם)\n{r}: **{rp}** נקודות\n{status}\n🔥 רצף: **{streak}** ימים ברצף\n\n⚔️ הזמן אוהד יריב: **/duel @חבר**\nתחזור מחר כדי לשמור על הרצף.",
         "ahead": "🔥 אתם מובילים על היריבה ב-{d}!",
         "behind": "⚠️ היריבה מובילה ב-{d}. תקרא לחברים!",
         "tie": "⚖️ שוויון מוחלט מול היריבה!",
@@ -201,10 +201,14 @@ class DiscordGame:
             p, r = self.power(cid), self.rival(cid)
             rp = self.power(r) if r else 0
             rank = self.one("SELECT COUNT(*) FROM cpower WHERE power>?", p)[0] + 1
+            streak, d = 0, datetime.strptime(day, "%Y-%m-%d")
+            while self.one("SELECT 1 FROM dhits WHERE day=? AND user_id=?", d.strftime("%Y-%m-%d"), uid) and streak < 365:
+                streak, d = streak + 1, d - timedelta(days=1)
             status = (T[lang]["ahead"].format(d=p - rp) if p > rp else
                       T[lang]["behind"].format(d=rp - p) if p < rp else T[lang]["tie"])
             return self.reply(T[lang]["hit"].format(c=self.name(cid, lang), p=p, rank=rank,
-                                                    r=self.name(r, lang) if r else "-", rp=rp, status=status), lang)
+                                                    r=self.name(r, lang) if r else "-", rp=rp, status=status,
+                                                    streak=streak), lang)
         if cmd == "war":
             rows = self.db.execute("SELECT club, power FROM cpower WHERE club IN (%s) ORDER BY power DESC LIMIT 10"
                                    % ",".join("?" * len(self.clubs)), tuple(self.clubs)).fetchall()
