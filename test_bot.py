@@ -489,4 +489,19 @@ assert "לא תקף" in api.last(7002)["text"]
 msg(priv(7003), user(7003), "/start dzzzzzzzzzz")
 assert "לא תקף" in api.last(7003)["text"]
 assert "link" in [c["name"] for c in DG.COMMANDS]
+
+# 35. user install: every command but /promote can be installed on a player's own account
+cs = {c["name"]: c for c in DG.commands()}
+assert cs["hit"]["integration_types"] == [0, 1] and cs["hit"]["contexts"] == [0, 1, 2]
+assert cs["promote"]["integration_types"] == [0]
+assert "integration_types" not in DG.COMMANDS[0]  # the base list stays usable before user install is enabled
+btns = it("war", "5003")["data"]["components"][0]["components"]
+assert "integration_type=1" in btns[1]["url"] and len(btns) <= 5
+# playing from a DM (user install, no guild) works
+r = dg.handle({"type": 2, "id": "1", "token": "t", "locale": "en-US", "user": {"id": "8001", "username": "dm"},
+               "data": {"name": "team", "options": [{"name": "club", "value": "fcb"}]}})
+assert "You're in" in r["data"]["content"]
+r = dg.handle({"type": 2, "id": "1", "token": "t", "locale": "en-US", "user": {"id": "8001", "username": "dm"},
+               "data": {"name": "hit", "options": []}})
+assert "+10" in r["data"]["content"] and "/link" not in r["data"]["content"]
 print("ALL TESTS PASSED")
