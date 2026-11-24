@@ -16,6 +16,8 @@ from datetime import datetime
 
 API = "https://discord.com/api/v10"
 UA = "DiscordBot (https://t.me/DerbyFanWarBot, 1.0)"
+HQ = "https://discord.gg/umBMNSrVj"
+DUELS_PER_DAY = 5
 from zoneinfo import ZoneInfo
 TZ = ZoneInfo("Asia/Jerusalem")
 
@@ -25,6 +27,7 @@ CREATE TABLE IF NOT EXISTS dusers(id TEXT PRIMARY KEY, name TEXT, club TEXT, gui
 CREATE TABLE IF NOT EXISTS dhits(day TEXT, user_id TEXT, club TEXT, guild TEXT, PRIMARY KEY(day, user_id));
 CREATE TABLE IF NOT EXISTS dguilds(id TEXT PRIMARY KEY, name TEXT, members INTEGER, joined INTEGER, left_at INTEGER);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS dduels(id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT, a TEXT, b TEXT, winner TEXT, guild TEXT);
 """
 
 T = {
@@ -42,6 +45,16 @@ T = {
         "invite": "Add **Fan War** to any server in one click — the whole server joins the world war:",
         "add": "➕ Add to your server",
         "tg": "📱 Play on Telegram too",
+        "hq": "⚔️ Join Fan War HQ",
+        "duel_self": "You can't duel yourself 😅 Tag a rival fan: **/duel @friend**",
+        "duel_bot": "Bots don't support a club 🤖 Tag a real fan.",
+        "duel_limit": "You've used all {n} duels for today. Come back tomorrow!",
+        "duel_open": "⚔️ <@{a}> ({ca}) challenges <@{b}> to a **Fan War duel**!\n<@{b}>, accept and defend your club — winner's club gets **+5**.",
+        "duel_accept": "⚔️ Accept",
+        "duel_notyou": "This duel isn't yours — start your own with **/duel @friend**.",
+        "duel_needteam": "Pick your club first with **/team**, then hit Accept again.",
+        "duel_done": "This duel is already over.",
+        "duel_result": "⚔️ **{wc}** wins! <@{w}> beat <@{l}> ({lc}) — **+5** for {wc}.\nRematch? **/duel @{ln}** · Table: **/war**",
         "help": "⚽ **Fan War — how to play**\n**/team** — pick your club\n**/hit** — +10 points for your club, once a day\n**/war** — the live world table\n**/invite** — add Fan War to another server\n\nFans on Discord and Telegram fight in the same war. Free, no ads, needs no permissions.",
     },
     "he": {
@@ -58,6 +71,16 @@ T = {
         "invite": "הוסף את **מלחמת האוהדים** לכל שרת בלחיצה אחת — כל השרת נכנס למלחמה העולמית:",
         "add": "➕ הוסף לשרת שלך",
         "tg": "📱 לשחק גם בטלגרם",
+        "hq": "⚔️ לשרת של מלחמת האוהדים",
+        "duel_self": "אי אפשר להתמודד מול עצמך 😅 תייג אוהד יריב: **/duel @חבר**",
+        "duel_bot": "לבוטים אין קבוצה 🤖 תייג אוהד אמיתי.",
+        "duel_limit": "ניצלת את כל {n} הדו-קרבות של היום. תחזור מחר!",
+        "duel_open": "⚔️ <@{a}> ({ca}) מזמין את <@{b}> ל**דו-קרב אוהדים**!\n<@{b}>, קבל והגן על הקבוצה שלך — הקבוצה המנצחת מקבלת **+5**.",
+        "duel_accept": "⚔️ קבל",
+        "duel_notyou": "הדו-קרב הזה לא שלך — פתח משלך עם **/duel @חבר**.",
+        "duel_needteam": "קודם בחר קבוצה עם **/team**, ואז לחץ שוב על קבל.",
+        "duel_done": "הדו-קרב הזה כבר נגמר.",
+        "duel_result": "⚔️ **{wc}** ניצחה! <@{w}> גבר על <@{l}> ({lc}) — **+5** ל{wc}.\nריוונג'? **/duel @{ln}** · טבלה: **/war**",
         "help": "⚽ **מלחמת האוהדים — איך משחקים**\n**/team** — בחר קבוצה\n**/hit** — +10 נקודות לקבוצה שלך, פעם ביום\n**/war** — הטבלה העולמית החיה\n**/invite** — הוסף את המשחק לשרת אחר\n\nאוהדים בדיסקורד ובטלגרם נלחמים באותה מלחמה. חינם, בלי פרסומות.",
     },
 }
@@ -70,6 +93,9 @@ COMMANDS = [
      "description_localizations": {"he": "הוסף את ה-+10 היומי לקבוצה שלך"}},
     {"name": "war", "description": "World Fan War live table",
      "description_localizations": {"he": "הטבלה החיה של מלחמת האוהדים"}},
+    {"name": "duel", "description": "Challenge a rival fan — winner's club gets +5",
+     "description_localizations": {"he": "הזמן אוהד יריב לדו-קרב — הקבוצה המנצחת מקבלת +5"},
+     "options": [{"type": 6, "name": "rival", "description": "The fan you challenge", "required": True}]},
     {"name": "help", "description": "How to play Fan War",
      "description_localizations": {"he": "איך משחקים"}},
     {"name": "invite", "description": "Add Fan War to another server",
@@ -80,8 +106,9 @@ COMMANDS = [
 class DiscordGame:
     """Game logic. handle() takes a Discord interaction dict and returns the interaction response dict."""
 
-    def __init__(self, db, data, app_id="", tg_link="https://t.me/DerbyFanWarBot", now=time.time):
-        self.db, self.now = db, now
+    def __init__(self, db, data, app_id="", tg_link="https://t.me/DerbyFanWarBot", now=time.time, rng=None):
+        import random
+        self.db, self.now, self.rng = db, now, rng or random.random
         self.db.row_factory = sqlite3.Row
         self.db.executescript(DSCHEMA)
         self.clubs, self.rivalries = data["clubs"], data["rivalries"]
@@ -120,7 +147,8 @@ class DiscordGame:
                 "&scope=bot+applications.commands&permissions=0")
 
     def buttons(self, lang):
-        row = [{"type": 2, "style": 5, "label": T[lang]["tg"], "url": self.tg_link + "?start=dc"}]
+        row = [{"type": 2, "style": 5, "label": T[lang]["hq"], "url": HQ},
+               {"type": 2, "style": 5, "label": T[lang]["tg"], "url": self.tg_link + "?start=dc"}]
         if self.app_id:
             row.insert(0, {"type": 2, "style": 5, "label": T[lang]["add"], "url": self.invite_url()})
         return [{"type": 1, "components": row}]
@@ -141,6 +169,8 @@ class DiscordGame:
         data = it.get("data") or {}
         cmd = data.get("name")
         opts = {o["name"]: o.get("value") for o in data.get("options", [])}
+        if it.get("type") == 3:  # button press
+            return self.duel_button(it, lang, uid, user)
         if it.get("type") == 4:  # autocomplete for /team
             typed = str(opts.get("club") or "").lower()
             hits = [(cid, c) for cid, c in self.clubs.items()
@@ -191,9 +221,56 @@ class DiscordGame:
                 guilds=self.one("SELECT COUNT(*) FROM dguilds WHERE left_at IS NULL")[0]), lang)
         if cmd == "invite":
             return self.reply(T[lang]["invite"], lang)
+        if cmd == "duel":
+            return self.duel_start(it, lang, uid, u, opts, guild)
         if cmd == "help":
             return self.reply(T[lang]["help"], lang)
         return self.reply(T[lang]["need_team"], lang, False)
+
+    def plain(self, text):
+        return {"type": 4, "data": {"content": text, "flags": 64}}
+
+    def duel_start(self, it, lang, uid, u, opts, guild):
+        if not u or u["club"] not in self.clubs:
+            return self.plain(T[lang]["need_team"])
+        rival = str(opts.get("rival") or "")
+        users = ((it.get("data") or {}).get("resolved") or {}).get("users") or {}
+        if rival == uid:
+            return self.plain(T[lang]["duel_self"])
+        if (users.get(rival) or {}).get("bot"):
+            return self.plain(T[lang]["duel_bot"])
+        if self.one("SELECT COUNT(*) FROM dduels WHERE day=? AND a=?", self.day(), uid)[0] >= DUELS_PER_DAY:
+            return self.plain(T[lang]["duel_limit"].format(n=DUELS_PER_DAY))
+        did = self.q("INSERT INTO dduels(day, a, b, guild) VALUES(?,?,?,?)", self.day(), uid, rival, guild).lastrowid
+        return {"type": 4, "data": {
+            "content": T[lang]["duel_open"].format(a=uid, b=rival, ca=self.name(u["club"], lang)),
+            "allowed_mentions": {"users": [rival]},
+            "components": [{"type": 1, "components": [
+                {"type": 2, "style": 1, "label": T[lang]["duel_accept"], "custom_id": f"duel:{did}"}]}]}}
+
+    def duel_button(self, it, lang, uid, user):
+        cid = ((it.get("data") or {}).get("custom_id") or "")
+        if not cid.startswith("duel:"):
+            return self.plain(T[lang]["duel_done"])
+        d = self.one("SELECT * FROM dduels WHERE id=?", int(cid[5:] or 0))
+        if not d or d["winner"]:
+            return self.plain(T[lang]["duel_done"])
+        if uid != d["b"]:
+            return self.plain(T[lang]["duel_notyou"])
+        ua = self.one("SELECT * FROM dusers WHERE id=?", d["a"])
+        ub = self.one("SELECT * FROM dusers WHERE id=?", d["b"])
+        if not ub or ub["club"] not in self.clubs:
+            return self.plain(T[lang]["duel_needteam"])
+        pa, pb = self.power(ua["club"]), self.power(ub["club"])
+        # underdog edge: the weaker club's fan wins a little more often, so every duel stays exciting
+        edge = 0.5 + max(-0.15, min(0.15, (pb - pa) / max(1, (pa + pb) * 4)))
+        a_wins = self.rng() < edge
+        w, l = (ua, ub) if a_wins else (ub, ua)
+        self.q("UPDATE dduels SET winner=? WHERE id=?", w["id"], d["id"])
+        self.q("INSERT INTO cpower(club, power) VALUES(?, 5) ON CONFLICT(club) DO UPDATE SET power=power+5", w["club"])
+        text = T[lang]["duel_result"].format(wc=self.name(w["club"], lang), lc=self.name(l["club"], lang),
+                                             w=w["id"], l=l["id"], ln=l["name"] or "rival")
+        return {"type": 7, "data": {"content": text, "allowed_mentions": {"parse": []}, "components": self.buttons(lang)}}
 
     def guild_join(self, g):
         self.q("INSERT INTO dguilds(id, name, members, joined) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
@@ -339,7 +416,7 @@ def run_discord(token, db_path, data, on_ready=None, tg_link="https://t.me/Derby
                     ws.send({"op": 1, "d": state["seq"]})
                 elif op in (7, 9):
                     break
-                elif t == "GUILD_CREATE":
+                elif t in ("GUILD_CREATE", "GUILD_UPDATE"):
                     game.guild_join(d)
                 elif t == "GUILD_DELETE":
                     game.guild_leave(d)
