@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS gratings(rater INTEGER, photo INTEGER, value INTEGER,
 CREATE TABLE IF NOT EXISTS greports(reporter INTEGER, photo INTEGER, reason TEXT, ts INTEGER, PRIMARY KEY(reporter, photo));
 CREATE TABLE IF NOT EXISTS gnotes(user INTEGER, day TEXT, n INTEGER, PRIMARY KEY(user, day));
 CREATE TABLE IF NOT EXISTS gmeta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS gvotes(photo INTEGER, voter INTEGER, value INTEGER, ts INTEGER, PRIMARY KEY(photo, voter));
 """
 
 STATE_HE = {"terms": "לא אישר תנאים", "year": "שנת לידה", "gender": "בחירת מין", "pref": "בחירת העדפה",
@@ -67,6 +68,15 @@ T = {
         "rate_cap": "🔥 {i}/{n} — כמה תיתן/י?",
         "rate_free": "🔥 כמה תיתן/י?",
         "sample": "🧪 תמונת דוגמה · ",
+        "inline_cap": "👀 כמה אתם נותנים לי? 1–10 · הדירוג אנונימי",
+        "inline_live": "⭐ {avg} · {n} דירוגים מהקבוצה",
+        "inline_join": "✨ מה זרים חושבים עליך? בדוק בחינם",
+        "inline_need": "📸 קודם מעלים תמונה ומחכים לאישור",
+        "voted": "✅ נקלט! הממוצע כאן: {avg} ({n} דירוגים)",
+        "own_vote": "זו התמונה שלך 🙂 תן לחברים לדרג",
+        "group_score": "👥 החברים בקבוצה דירגו אותך: ⭐ {avg} ({n} דירוגים).\nרוצה לדעת מה זרים חושבים? הציון האמיתי שלך מגיע רק מזרים: /me",
+        "share_btn": "📣 תנו לחברים לדרג אותי בקבוצה",
+        "share_how": "📣 <b>תן לחברים לדרג אותך</b>\nבכל קבוצה או צ'אט בטלגרם, הקלד <code>@{bot}</code> ובחר את התמונה שלך. החברים מדרגים 1–10 ישר מהקבוצה, והממוצע מתעדכן חי.\nאו לחץ על הכפתור 👇",
         "none": "😴 אין כרגע תמונות חדשות לדרג. נסה שוב עוד קצת — ושתף את הקישור שלך כדי שיגיעו עוד: /link",
         "slow": "לאט 🙂",
         "cap": "הגעת למקסימום הדירוגים להיום. נתראה מחר!",
@@ -94,7 +104,7 @@ T = {
         "r_minor": "נראה/ית קטין/ה", "r_fake": "זה לא הוא/היא", "r_nsfw": "עירום / לא הולם", "r_other": "אחר",
         "reported": "תודה, הדיווח התקבל.",
         "deleted": "🗑️ כל התמונות, הדירוגים והנתונים שלך נמחקו.",
-        "help": "✨ <b>Glow</b>\n/rate — לדרג\n/me — הציון שלי\n/link — הקישור האישי שלי\n/card — כרטיס לשיתוף\n/lang — שפה\n/delete — למחוק הכול",
+        "help": "✨ <b>Glow</b>\n/rate — לדרג\n/me — הציון שלי\n/share — שהחברים ידרגו אותי בקבוצה\n/link — הקישור האישי שלי\n/card — כרטיס לשיתוף\n/lang — שפה\n/delete — למחוק הכול",
         "blocked": "⛔ אין גישה לבוט.",
     },
     "en": {
@@ -118,6 +128,15 @@ T = {
         "rate_cap": "🔥 {i}/{n} — what's your rating?",
         "rate_free": "🔥 What's your rating?",
         "sample": "🧪 Sample photo · ",
+        "inline_cap": "👀 How much would you give me? 1–10 · votes are anonymous",
+        "inline_live": "⭐ {avg} · {n} votes from this chat",
+        "inline_join": "✨ What do strangers think of you? Find out free",
+        "inline_need": "📸 Upload a photo first and wait for approval",
+        "voted": "✅ Got it! Average here: {avg} ({n} votes)",
+        "own_vote": "That's your photo 🙂 let your friends vote",
+        "group_score": "👥 Your friends in the chat rated you: ⭐ {avg} ({n} votes).\nWant to know what strangers think? Your real score only comes from strangers: /me",
+        "share_btn": "📣 Let friends rate me in a group",
+        "share_how": "📣 <b>Let your friends rate you</b>\nIn any Telegram group or chat, type <code>@{bot}</code> and pick your photo. Friends vote 1–10 right in the chat and the average updates live.\nOr tap the button 👇",
         "none": "😴 No new photos to rate right now. Try again soon — and share your link to bring more: /link",
         "slow": "Slow down 🙂",
         "cap": "You hit today's rating limit. See you tomorrow!",
@@ -145,7 +164,7 @@ T = {
         "r_minor": "Looks under 18", "r_fake": "Not them", "r_nsfw": "Nudity / inappropriate", "r_other": "Other",
         "reported": "Thanks, report received.",
         "deleted": "🗑️ All your photos, ratings and data were deleted.",
-        "help": "✨ <b>Glow</b>\n/rate — rate people\n/me — my score\n/link — my personal link\n/card — share card\n/lang — language\n/delete — delete everything",
+        "help": "✨ <b>Glow</b>\n/rate — rate people\n/me — my score\n/share — friends rate me in a group\n/link — my personal link\n/card — share card\n/lang — language\n/delete — delete everything",
         "blocked": "⛔ No access.",
     },
 }
@@ -332,6 +351,10 @@ class Glow:
 
     # ---------- updates ----------
     def handle(self, upd):
+        if "inline_query" in upd:
+            return self.on_inline(upd["inline_query"])
+        if "callback_query" in upd and (upd["callback_query"].get("data") or "").startswith("v:"):
+            return self.on_group_vote(upd["callback_query"])
         if "callback_query" in upd:
             return self.on_callback(upd["callback_query"])
         m = upd.get("message")
@@ -384,6 +407,8 @@ class Glow:
             return self.show_next(u)
         if cmd == "me":
             return self.me(u)
+        if cmd == "share":
+            return self.send(u["id"], self.t(u, "share_how", bot=self.username), self.share_kb(u))
         if cmd == "link":
             return self.send(u["id"], self.t(u, "link", url=self.link(u["id"])))
         if cmd == "card":
@@ -499,6 +524,7 @@ class Glow:
         for pid in ids:
             self.q("DELETE FROM gratings WHERE photo=?", pid)
             self.q("DELETE FROM greports WHERE photo=?", pid)
+            self.q("DELETE FROM gvotes WHERE photo=?", pid)
         self.q("DELETE FROM gphotos WHERE owner=?", u["id"])
         self.q("DELETE FROM gratings WHERE rater=?", u["id"])
         self.q("DELETE FROM gnotes WHERE user=?", u["id"])
@@ -507,6 +533,52 @@ class Glow:
         if blocked:  # someone under 18 stays blocked, without their data
             self.q("INSERT INTO gusers(id, lang, state, blocked, joined) VALUES(?,?,'terms',1,?)", u["id"], u["lang"], int(self.now()))
         self.send(u["id"], T.get(u["lang"] or "en", T["en"])["deleted"])
+
+    # ---------- rate me in the group (inline mode): every user becomes a channel ----------
+    def share_kb(self, u):
+        return [[{"text": self.t(u, "share_btn"), "switch_inline_query": ""}]]
+
+    def group_kb(self, o, pid):
+        row1 = [{"text": str(i), "callback_data": f"v:{pid}:{i}"} for i in range(1, 6)]
+        row2 = [{"text": str(i), "callback_data": f"v:{pid}:{i}"} for i in range(6, 11)]
+        return {"inline_keyboard": [row1, row2, [{"text": self.t(o, "inline_join"), "url": f"https://t.me/{self.username}?start=r_{o['id']}"}]]}
+
+    def on_inline(self, q):
+        o = self.one("SELECT * FROM gusers WHERE id=?", q["from"]["id"])
+        photos = self.db.execute("SELECT id, file FROM gphotos WHERE owner=? AND status='live' ORDER BY id DESC LIMIT 3",
+                                 (o["id"],)).fetchall() if o and not o["blocked"] else []
+        if not photos:
+            lang = (o["lang"] if o else None) or ("he" if (q["from"].get("language_code") or "").startswith("he") else "en")
+            return self.api.call("answerInlineQuery", inline_query_id=q["id"], results=[], cache_time=0, is_personal=True,
+                                 button={"text": T[lang]["inline_need"], "start_parameter": "share"})
+        results = [{"type": "photo", "id": str(p["id"]), "photo_file_id": p["file"], "caption": self.t(o, "inline_cap"),
+                    "reply_markup": self.group_kb(o, p["id"])} for p in photos]
+        self.api.call("answerInlineQuery", inline_query_id=q["id"], results=results, cache_time=0, is_personal=True)
+
+    def on_group_vote(self, cb):
+        answer = lambda text=None: self.api.call("answerCallbackQuery", callback_query_id=cb["id"], **({"text": text} if text else {}))
+        try:
+            _, pid, v = cb["data"].split(":")
+            pid, v = int(pid), int(v)
+        except ValueError:
+            return answer()
+        p = self.one("SELECT * FROM gphotos WHERE id=? AND status='live' AND owner<>0", pid)
+        o = p and self.one("SELECT * FROM gusers WHERE id=?", p["owner"])
+        if not o or not 1 <= v <= 10:
+            return answer()
+        voter = cb["from"]["id"]
+        if voter == o["id"]:
+            return answer(self.t(o, "own_vote"))
+        self.q("INSERT OR REPLACE INTO gvotes(photo, voter, value, ts) VALUES(?,?,?,?)", pid, voter, v, int(self.now()))
+        avg, n = self.one("SELECT ROUND(AVG(value), 1), COUNT(*) FROM gvotes WHERE photo=?", pid)
+        lang = "he" if (cb["from"].get("language_code") or "").startswith("he") else "en"
+        answer(T[lang]["voted"].format(avg=avg, n=n))
+        if cb.get("inline_message_id"):
+            self.api.call("editMessageCaption", inline_message_id=cb["inline_message_id"],
+                          caption=self.t(o, "inline_cap") + "\n" + self.t(o, "inline_live", avg=avg, n=n),
+                          reply_markup=self.group_kb(o, pid))
+        if n in (5, 20, 50, 100):
+            self.notify(o["id"], self.t(o, "group_score", avg=avg, n=n))
 
     # ---------- admin (owner only) ----------
     def who(self, u):
@@ -578,6 +650,9 @@ class Glow:
         rall = c("SELECT COUNT(*) FROM gratings")
         avg = self.one("SELECT AVG(value) FROM gratings")[0]
         reps = c("SELECT COUNT(*) FROM greports")
+        gv = c("SELECT COUNT(*) FROM gvotes")
+        gshared = c("SELECT COUNT(DISTINCT photo) FROM gvotes")
+        gvoters = c("SELECT COUNT(DISTINCT voter) FROM gvotes")
         lines = [
             "📊 <b>Glow — סטטיסטיקה (רק לך)</b>",
             "",
@@ -590,6 +665,7 @@ class Glow:
             "",
             f"📸 תמונות: בדירוג {ph.get('live', 0)} · ממתינות לאישור שלך {ph.get('pending', 0)} · מוסתרות {ph.get('hidden', 0)} · נדחו {ph.get('rejected', 0)}",
             f"⭐ דירוגים: 24ש׳ {r24} · סה״כ {rall} · ממוצע {avg:.1f}" if avg else f"⭐ דירוגים: 24ש׳ {r24} · סה״כ {rall}",
+            f"📣 דירוג בקבוצות: {gshared} תמונות שותפו · {gv} דירוגים · {gvoters} אנשים דירגו",
             f"🚩 דיווחים: {reps} · 🧪 תמונות דוגמה: {smp} (/samples)",
             "",
             "/users — אחרונים · /u &lt;id&gt; — משתמש · /feed — התראות חיות",
@@ -729,7 +805,7 @@ class Glow:
         self.q("UPDATE gphotos SET status=? WHERE id=?", "live" if ok else "rejected", pid)
         answer("✅ אושרה" if ok else "❌ נדחתה")
         if o:
-            self.send(o["id"], self.t(o, "approved" if ok else "rejected"))
+            self.send(o["id"], self.t(o, "approved" if ok else "rejected"), self.share_kb(o) if ok else None)
 
 
 # ---------- network ----------
@@ -756,7 +832,7 @@ def run(token, db_path, owner):
         if not me:
             time.sleep(30)
     api.call("setMyCommands", commands=[{"command": c, "description": d} for c, d in (
-        ("rate", "Rate people / לדרג"), ("me", "My score / הציון שלי"), ("link", "My link / הקישור שלי"),
+        ("rate", "Rate people / לדרג"), ("me", "My score / הציון שלי"), ("share", "Friends rate me / שתף בקבוצה"), ("link", "My link / הקישור שלי"),
         ("card", "Share card / כרטיס"), ("lang", "Language / שפה"), ("delete", "Delete my data / מחיקה"))])
     try:
         api.call("setMyCommands", scope={"type": "chat", "chat_id": owner}, commands=[{"command": c, "description": d} for c, d in (
@@ -767,7 +843,7 @@ def run(token, db_path, owner):
     g = Glow(api, sqlite3.connect(db_path, timeout=30), owner, me.get("username", "GlowRateMeBot"))
     offset = 0
     while True:
-        ups = api.call("getUpdates", offset=offset, timeout=50, allowed_updates=["message", "callback_query"])
+        ups = api.call("getUpdates", offset=offset, timeout=50, allowed_updates=["message", "callback_query", "inline_query"])
         if ups is None:
             time.sleep(3)
             continue
