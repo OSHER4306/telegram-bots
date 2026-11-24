@@ -400,4 +400,30 @@ assert any(m == "deleteMessage" for m, p in api.calls)
 msg(priv(912), user(912), "/discord " + "y" * 60)
 assert bot.one("SELECT v FROM meta WHERE k='discord_token'")["v"] == "x" * 60
 
+# 31. Discord duels: tag a rival fan, they accept, winner's club +5, limits
+dg.rng = lambda: 0.0  # challenger wins
+def duel(a, b, bot=False):
+    return dg.handle({"type": 2, "id": "1", "token": "t", "guild_id": "g1", "locale": "en-US",
+                      "member": {"user": {"id": a, "username": f"d{a}"}},
+                      "data": {"name": "duel", "options": [{"name": "rival", "value": b}],
+                               "resolved": {"users": {b: {"id": b, "bot": bot}}}}})
+def press(uid_, cid):
+    return dg.handle({"type": 3, "id": "1", "token": "t", "guild_id": "g1", "locale": "en-US",
+                      "member": {"user": {"id": uid_, "username": f"d{uid_}"}}, "data": {"custom_id": cid}})
+assert "yourself" in duel("5001", "5001")["data"]["content"]
+assert "Bots" in duel("5001", "999", bot=True)["data"]["content"]
+r = duel("5001", "5002")
+assert "<@5002>" in r["data"]["content"] and r["data"]["allowed_mentions"] == {"users": ["5002"]}
+cid = r["data"]["components"][0]["components"][0]["custom_id"]
+assert "isn't yours" in press("5003", cid)["data"]["content"]
+before = dg.power("rma")
+res = press("5002", cid)
+assert res["type"] == 7 and "Real Madrid" in res["data"]["content"] and dg.power("rma") == before + 5
+assert "already over" in press("5002", cid)["data"]["content"]
+assert "umBMNSrVj" in str(res["data"]["components"])
+for _ in range(4): duel("5001", "5002")
+assert "all 5 duels" in duel("5001", "5002")["data"]["content"]
+assert "Pick your team" in duel("5009", "5001")["data"]["content"]
+dg.guild_join({"id": "g1", "name": "Renamed HQ", "member_count": 5})
+assert dg.one("SELECT name FROM dguilds WHERE id='g1'")["name"] == "Renamed HQ"
 print("ALL TESTS PASSED")
