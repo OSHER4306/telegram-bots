@@ -467,4 +467,26 @@ assert dg.spotlight()["id"] == "g1"
 assert "מלחמת השרתים" in it("help", "5003", locale="he")["data"]["content"]
 dg.guild_join({"id": "g1", "name": "Renamed HQ"})  # GUILD_UPDATE has no member_count: keep the old number
 assert dg.one("SELECT members FROM dguilds WHERE id='g1'")["members"] == 5
+
+# 34. /link: Discord player links Telegram; their daily Telegram penalty adds +20 to the Discord server
+it("team", "5005", club="rma")
+assert "/link" in it("hit", "5005")["data"]["content"]
+lk = it("link", "5001")
+url = lk["data"]["components"][0]["components"][0]["url"]
+assert lk["data"]["flags"] == 64 and "?start=d" in url and "+20" in lk["data"]["content"]
+code = url.split("start=d")[1]
+assert len(code) == 10
+before = dict((r["id"], r["s"]) for r in dg.board())["g1"]
+msg(priv(7001), user(7001, "en"), "/start d" + code)
+assert any("Linked" in p.get("text", "") and "Renamed HQ" in p.get("text", "") for m, p in api.calls[-4:])
+assert bot.one("SELECT club FROM users WHERE id=7001")["club"] == "rma"  # took the Discord club
+cb(priv(7001), user(7001, "en"), "pd:1:2")
+assert dict((r["id"], r["s"]) for r in dg.board())["g1"] == before + 20
+cb(priv(7001), user(7001, "en"), "pd:2:0")  # same day again: no second bonus
+assert dict((r["id"], r["s"]) for r in dg.board())["g1"] == before + 20
+msg(priv(7002), user(7002), "/start d" + code)  # someone else can't reuse a used code
+assert "לא תקף" in api.last(7002)["text"]
+msg(priv(7003), user(7003), "/start dzzzzzzzzzz")
+assert "לא תקף" in api.last(7003)["text"]
+assert "link" in [c["name"] for c in DG.COMMANDS]
 print("ALL TESTS PASSED")
