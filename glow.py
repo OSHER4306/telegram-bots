@@ -39,7 +39,11 @@ CREATE TABLE IF NOT EXISTS gratings(rater INTEGER, photo INTEGER, value INTEGER,
   day TEXT, PRIMARY KEY(rater, photo));
 CREATE TABLE IF NOT EXISTS greports(reporter INTEGER, photo INTEGER, reason TEXT, ts INTEGER, PRIMARY KEY(reporter, photo));
 CREATE TABLE IF NOT EXISTS gnotes(user INTEGER, day TEXT, n INTEGER, PRIMARY KEY(user, day));
+CREATE TABLE IF NOT EXISTS gmeta(k TEXT PRIMARY KEY, v TEXT);
 """
+
+STATE_HE = {"terms": "לא אישר תנאים", "year": "שנת לידה", "gender": "בחירת מין", "pref": "בחירת העדפה",
+            "live": "חסר וידאו אימות", "ready": "פעיל"}
 
 T = {
     "he": {
@@ -152,6 +156,12 @@ class Glow:
         self.db = db
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        for col in ("seen INTEGER", "uname TEXT"):
+            try:
+                self.db.execute("ALTER TABLE gusers ADD COLUMN " + col)
+            except sqlite3.OperationalError:
+                pass
+        self.fresh = None
 
     # ---------- helpers ----------
     def q(self, sql, *a):
@@ -184,8 +194,9 @@ class Glow:
             lang = "he" if (frm.get("language_code") or "").startswith("he") else "en"
             self.q("INSERT INTO gusers(id, name, lang, state, joined) VALUES(?,?,?,?,?)",
                    frm["id"], (frm.get("first_name") or "")[:40], lang, "terms", int(self.now()))
-            u = self.one("SELECT * FROM gusers WHERE id=?", frm["id"])
-        return u
+            self.fresh = frm["id"]
+        self.q("UPDATE gusers SET seen=?, uname=? WHERE id=?", int(self.now()), (frm.get("username") or "")[:40] or None, frm["id"])
+        return self.one("SELECT * FROM gusers WHERE id=?", frm["id"])
 
     def rated(self, uid):
         return self.one("SELECT COUNT(*) FROM gratings WHERE rater=?", uid)[0]
@@ -344,10 +355,15 @@ class Glow:
                 self.q("UPDATE gusers SET ref=? WHERE id=?", int(arg[2:]), u["id"])
                 r = self.one("SELECT name FROM gusers WHERE id=?", int(arg[2:]))
                 self.send(u["id"], self.t(u, "friend_in", name=r["name"] or "🙂"))
+            if self.fresh == u["id"]:
+                self.fresh = None
+                self.feed(f"🆕 נכנס משתמש חדש: {self.who(self.one('SELECT * FROM gusers WHERE id=?', u['id']))}")
             if u["state"] == "terms":
                 return self.ask_terms(u)
             return self.show_next(self.user(m["from"])) if u["state"] == "ready" else self.resume(u)
-        if u["state"] != "ready" and cmd not in ("delete", "lang", "help", "stats"):
+        if u["id"] == self.owner and cmd in ("stats", "users", "u", "feed"):
+            return self.admin(cmd, arg.strip())
+        if u["state"] != "ready" and cmd not in ("delete", "lang", "help"):
             return self.resume(u)
         if cmd == "rate":
             return self.show_next(u)
@@ -363,8 +379,6 @@ class Glow:
             return self.send(u["id"], T[lang]["help"])
         if cmd == "delete":
             return self.delete(u)
-        if cmd == "stats" and u["id"] == self.owner:
-            return self.stats()
         return self.send(u["id"], self.t(u, "help"))
 
     def resume(self, u):
@@ -479,15 +493,100 @@ class Glow:
             self.q("INSERT INTO gusers(id, lang, state, blocked, joined) VALUES(?,?,'terms',1,?)", u["id"], u["lang"], int(self.now()))
         self.send(u["id"], T.get(u["lang"] or "en", T["en"])["deleted"])
 
+    # ---------- admin (owner only) ----------
+    def who(self, u):
+        tag = f"@{u['uname']}" if u["uname"] else ""
+        return f"{u['name'] or '?'} {tag} <code>{u['id']}</code> · {u['lang']}".replace("  ", " ")
+
+    def ago(self, ts):
+        if not ts:
+            return "-"
+        d = int(self.now()) - int(ts)
+        return f"{d // 60} דק׳" if d < 3600 else f"{d // 3600} שע׳" if d < 86400 else f"{d // 86400} ימים"
+
+    def feed(self, text):
+        if (self.one("SELECT v FROM gmeta WHERE k='feed'") or ["on"])[0] == "on":
+            self.send(self.owner, text)
+
+    def admin(self, cmd, arg):
+        if cmd == "feed":
+            on = (self.one("SELECT v FROM gmeta WHERE k='feed'") or ["on"])[0] != "on"
+            self.q("INSERT OR REPLACE INTO gmeta(k, v) VALUES('feed', ?)", "on" if on else "off")
+            return self.send(self.owner, "🔔 התראות חיות: " + ("פועלות" if on else "כבויות"))
+        if cmd == "users":
+            return self.users(int(arg) if arg.isdigit() else 15)
+        if cmd == "u":
+            return self.user_card(int(arg) if arg.lstrip("-").isdigit() else 0)
+        return self.stats()
+
     def stats(self):
-        users = self.one("SELECT COUNT(*) FROM gusers WHERE blocked=0")[0]
-        live = self.one("SELECT COUNT(*) FROM gphotos WHERE status='live'")[0]
-        pend = self.one("SELECT COUNT(*) FROM gphotos WHERE status='pending'")[0]
-        today = self.one("SELECT COUNT(*) FROM gratings WHERE day=?", self.day())[0]
-        total = self.one("SELECT COUNT(*) FROM gratings")[0]
-        refs = self.one("SELECT COUNT(*) FROM gusers WHERE ref IS NOT NULL")[0]
-        self.send(self.owner, f"✨ <b>Glow</b>\nמשתמשים: {users} · מגיעים מקישור: {refs}\nתמונות בדירוג: {live} · ממתינות: {pend}\n"
-                              f"דירוגים היום: {today} · סה\"כ: {total}")
+        c = lambda sql, *a: self.one(sql, *a)[0]
+        now = int(self.now())
+        total = c("SELECT COUNT(*) FROM gusers WHERE name IS NOT NULL")
+        new24 = c("SELECT COUNT(*) FROM gusers WHERE name IS NOT NULL AND joined>?", now - 86400)
+        new7 = c("SELECT COUNT(*) FROM gusers WHERE name IS NOT NULL AND joined>?", now - 7 * 86400)
+        act24 = c("SELECT COUNT(*) FROM gusers WHERE seen>?", now - 86400)
+        minors = c("SELECT COUNT(*) FROM gusers WHERE blocked=1")
+        refs = c("SELECT COUNT(*) FROM gusers WHERE ref IS NOT NULL")
+        st = dict(self.db.execute("SELECT state, COUNT(*) FROM gusers WHERE blocked=0 AND name IS NOT NULL GROUP BY state").fetchall())
+        up = c("SELECT COUNT(DISTINCT owner) FROM gphotos WHERE status<>'new'")
+        raters = c("SELECT COUNT(DISTINCT rater) FROM gratings")
+        unlocked = c("SELECT COUNT(*) FROM (SELECT rater FROM gratings GROUP BY rater HAVING COUNT(*)>=?)", GIVE)
+        ph = dict(self.db.execute("SELECT status, COUNT(*) FROM gphotos GROUP BY status").fetchall())
+        r24 = c("SELECT COUNT(*) FROM gratings WHERE ts>?", now - 86400)
+        rall = c("SELECT COUNT(*) FROM gratings")
+        avg = self.one("SELECT AVG(value) FROM gratings")[0]
+        reps = c("SELECT COUNT(*) FROM greports")
+        lines = [
+            "📊 <b>Glow — סטטיסטיקה (רק לך)</b>",
+            "",
+            f"👥 משתמשים: <b>{total}</b> · חדשים 24ש׳: {new24} · 7 ימים: {new7}",
+            f"🟢 פעילים ב-24ש׳: {act24} · הגיעו מקישור של חבר: {refs} · נחסמו (מתחת ל-18): {minors}",
+            "",
+            "🪜 <b>משפך:</b>",
+            f"נכנסו {total} → סיימו הרשמה {st.get('ready', 0) + st.get('live', 0)} → העלו תמונה {up} → דירגו {raters} → פתחו ציון ({GIVE}+) {unlocked}",
+            "תקועים: " + (" · ".join(f"{STATE_HE.get(k, k)} {v}" for k, v in st.items() if k != "ready") or "אף אחד"),
+            "",
+            f"📸 תמונות: בדירוג {ph.get('live', 0)} · ממתינות לאישור שלך {ph.get('pending', 0)} · מוסתרות {ph.get('hidden', 0)} · נדחו {ph.get('rejected', 0)}",
+            f"⭐ דירוגים: 24ש׳ {r24} · סה״כ {rall} · ממוצע {avg:.1f}" if avg else f"⭐ דירוגים: 24ש׳ {r24} · סה״כ {rall}",
+            f"🚩 דיווחים: {reps}",
+            "",
+            "/users — אחרונים · /u &lt;id&gt; — משתמש · /feed — התראות חיות",
+        ]
+        self.send(self.owner, "\n".join(lines))
+
+    def users(self, n):
+        n = max(1, min(n, 40))
+        rows = self.db.execute("SELECT * FROM gusers WHERE name IS NOT NULL ORDER BY joined DESC LIMIT ?", (n,)).fetchall()
+        if not rows:
+            return self.send(self.owner, "אין עדיין משתמשים.")
+        out = [f"👥 <b>{len(rows)} המשתמשים האחרונים</b>"]
+        for u in rows:
+            ph = self.one("SELECT COUNT(*) FROM gphotos WHERE owner=? AND status<>'new'", u["id"])[0]
+            gave = self.rated(u["id"])
+            got = self.one("SELECT COUNT(*) FROM gratings r JOIN gphotos p ON p.id=r.photo WHERE p.owner=?", u["id"])[0]
+            state = "⛔ קטין" if u["blocked"] else STATE_HE.get(u["state"], u["state"])
+            out.append(f"\n• {self.who(u)}\n  נכנס לפני {self.ago(u['joined'])} · נראה לפני {self.ago(u['seen'])} · {state}"
+                       f"\n  📸 {ph} · נתן {gave} · קיבל {got}" + (" · 🔗 מחבר" if u["ref"] else ""))
+        self.send(self.owner, "\n".join(out))
+
+    def user_card(self, uid):
+        u = self.one("SELECT * FROM gusers WHERE id=?", uid)
+        if not u:
+            return self.send(self.owner, "לא נמצא. כתוב /u ואת המספר מ-/users")
+        age = (datetime.fromtimestamp(self.now(), TZ).year - u["year"]) if u["year"] else "-"
+        g = {"m": "גבר", "f": "אישה", "o": "אחר"}.get(u["gender"], "-")
+        p = {"m": "גברים", "f": "נשים", "a": "כולם"}.get(u["pref"], "-")
+        refd = self.one("SELECT COUNT(*) FROM gusers WHERE ref=?", uid)[0]
+        out = [f"👤 <b>{self.who(u)}</b>",
+               f"מצב: {'⛔ קטין' if u['blocked'] else STATE_HE.get(u['state'], u['state'])} · גיל {age} · {g} · מדרג {p}",
+               f"נכנס לפני {self.ago(u['joined'])} · נראה לפני {self.ago(u['seen'])}",
+               f"נתן {self.rated(uid)} דירוגים · קארמה {u['karma']} · הביא {refd} חברים" + (f" · הגיע דרך <code>{u['ref']}</code>" if u["ref"] else "")]
+        for ph in self.db.execute("SELECT * FROM gphotos WHERE owner=? ORDER BY id", (uid,)).fetchall():
+            n = self.one("SELECT COUNT(*) FROM gratings WHERE photo=?", ph["id"])[0]
+            sc = self.score(ph["id"])[0]
+            out.append(f"📸 #{ph['id']} {ph['status']} · {n} דירוגים" + (f" · ציון {sc}" if sc else ""))
+        self.send(self.owner, "\n".join(out))
 
     # ---------- callbacks ----------
     def on_callback(self, cb):
@@ -618,6 +717,12 @@ def run(token, db_path, owner):
     api.call("setMyCommands", commands=[{"command": c, "description": d} for c, d in (
         ("rate", "Rate people / לדרג"), ("me", "My score / הציון שלי"), ("link", "My link / הקישור שלי"),
         ("card", "Share card / כרטיס"), ("lang", "Language / שפה"), ("delete", "Delete my data / מחיקה"))])
+    try:
+        api.call("setMyCommands", scope={"type": "chat", "chat_id": owner}, commands=[{"command": c, "description": d} for c, d in (
+            ("stats", "📊 סטטיסטיקה"), ("users", "👥 משתמשים אחרונים"), ("feed", "🔔 התראות חיות"),
+            ("rate", "לדרג"), ("me", "הציון שלי"), ("link", "הקישור שלי"))])
+    except Exception as e:
+        print("glow owner commands:", e)
     g = Glow(api, sqlite3.connect(db_path, timeout=30), owner, me.get("username", "GlowRateMeBot"))
     offset = 0
     while True:
