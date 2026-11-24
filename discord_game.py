@@ -18,6 +18,9 @@ API = "https://discord.com/api/v10"
 UA = "DiscordBot (https://t.me/DerbyFanWarBot, 1.0)"
 HQ = "https://discord.gg/umBMNSrVj"
 DUELS_PER_DAY = 5
+MANAGE_GUILD = 1 << 5
+import re
+INVITE_RE = re.compile(r"^(?:https?://)?(?:www\.)?(?:discord\.gg|discord(?:app)?\.com/invite)/([A-Za-z0-9-]{2,32})/?$")
 from zoneinfo import ZoneInfo
 TZ = ZoneInfo("Asia/Jerusalem")
 
@@ -55,7 +58,14 @@ T = {
         "duel_needteam": "Pick your club first with **/team**, then hit Accept again.",
         "duel_done": "This duel is already over.",
         "duel_result": "⚔️ **{wc}** wins! <@{w}> beat <@{l}> ({lc}) — **+5** for {wc}.\nRematch? **/duel @{ln}** · Table: **/war**",
-        "help": "⚽ **Fan War — how to play**\n**/team** — pick your club\n**/hit** — +10 points for your club, once a day\n**/war** — the live world table\n**/invite** — add Fan War to another server\n\nFans on Discord and Telegram fight in the same war. Free, no ads, needs no permissions.",
+        "help": "⚽ **Fan War — how to play**\n**/team** — pick your club\n**/hit** — +10 points for your club, once a day\n**/war** — the live world table\n**/duel @friend** — challenge a rival fan\n**/invite** — add Fan War to another server\n**/promote** — (admins) enter your server in the Server War\n\n🏆 **Server War:** every hit and duel scores for your server. The #1 server each week is advertised in EVERY server running Fan War.\nFans on Discord and Telegram fight in the same war. Free, no ads, needs no permissions.",
+        "myserver": "\n🏟️ Your server: **#{rank}** in the Server War this week ({s} pts). #1 gets advertised in every Fan War server!",
+        "spot": "\n\n📣 **Server of the week:** {n} — {s} pts → {url}",
+        "spot_btn": "🏆 Server of the week",
+        "promote_ok": "✅ **{n}** is in the Server War! Every /hit (+10) and duel win (+5) by your members scores for you.\nIf you finish #1 this week, your invite is shown in every server running Fan War. Rally your members: **/team** then **/hit** every day!",
+        "promote_bad": "That doesn't look like a server invite. Use a permanent link like **https://discord.gg/yourcode**.",
+        "promote_perm": "Only server admins (Manage Server) can enter the server in the Server War.",
+        "promote_dm": "Use **/promote** inside your server.",
     },
     "he": {
         "need_team": "⚽ קודם בחר קבוצה: כתוב **/team** ובחר את הקבוצה שלך.",
@@ -81,7 +91,14 @@ T = {
         "duel_needteam": "קודם בחר קבוצה עם **/team**, ואז לחץ שוב על קבל.",
         "duel_done": "הדו-קרב הזה כבר נגמר.",
         "duel_result": "⚔️ **{wc}** ניצחה! <@{w}> גבר על <@{l}> ({lc}) — **+5** ל{wc}.\nריוונג'? **/duel @{ln}** · טבלה: **/war**",
-        "help": "⚽ **מלחמת האוהדים — איך משחקים**\n**/team** — בחר קבוצה\n**/hit** — +10 נקודות לקבוצה שלך, פעם ביום\n**/war** — הטבלה העולמית החיה\n**/invite** — הוסף את המשחק לשרת אחר\n\nאוהדים בדיסקורד ובטלגרם נלחמים באותה מלחמה. חינם, בלי פרסומות.",
+        "help": "⚽ **מלחמת האוהדים — איך משחקים**\n**/team** — בחר קבוצה\n**/hit** — +10 נקודות לקבוצה שלך, פעם ביום\n**/war** — הטבלה העולמית החיה\n**/duel @חבר** — דו-קרב מול אוהד יריב\n**/invite** — הוסף את המשחק לשרת אחר\n**/promote** — (מנהלים) רשום את השרת למלחמת השרתים\n\n🏆 **מלחמת השרתים:** כל מכה ודו-קרב נספרים לשרת שלכם. השרת במקום 1 בכל שבוע מפורסם בכל השרתים שמשחקים.\nאוהדים בדיסקורד ובטלגרם נלחמים באותה מלחמה. חינם, בלי פרסומות.",
+        "myserver": "\n🏟️ השרת שלכם: **מקום {rank}** במלחמת השרתים השבוע ({s} נק'). המקום הראשון מפורסם בכל השרתים!",
+        "spot": "\n\n📣 **שרת השבוע:** {n} — {s} נק' → {url}",
+        "spot_btn": "🏆 שרת השבוע",
+        "promote_ok": "✅ **{n}** נכנס למלחמת השרתים! כל /hit (+10) וכל ניצחון בדו-קרב (+5) של החברים שלכם נספר לשרת.\nמי שמסיים ראשון השבוע — הקישור שלו מוצג בכל השרתים שמשחקים. תגייסו את החברים: **/team** ואז **/hit** כל יום!",
+        "promote_bad": "זה לא נראה כמו קישור הזמנה. שימו קישור קבוע כמו **https://discord.gg/הקוד-שלכם**.",
+        "promote_perm": "רק מנהלי שרת (Manage Server) יכולים לרשום את השרת למלחמת השרתים.",
+        "promote_dm": "השתמשו ב-**/promote** בתוך השרת שלכם.",
     },
 }
 
@@ -96,6 +113,9 @@ COMMANDS = [
     {"name": "duel", "description": "Challenge a rival fan — winner's club gets +5",
      "description_localizations": {"he": "הזמן אוהד יריב לדו-קרב — הקבוצה המנצחת מקבלת +5"},
      "options": [{"type": 6, "name": "rival", "description": "The fan you challenge", "required": True}]},
+    {"name": "promote", "description": "Admins: enter your server in the Server War — #1 gets advertised everywhere",
+     "description_localizations": {"he": "מנהלים: רשמו את השרת למלחמת השרתים — המקום הראשון מפורסם בכל השרתים"},
+     "options": [{"type": 3, "name": "invite", "description": "A permanent invite link to your server", "required": True}]},
     {"name": "help", "description": "How to play Fan War",
      "description_localizations": {"he": "איך משחקים"}},
     {"name": "invite", "description": "Add Fan War to another server",
@@ -111,6 +131,11 @@ class DiscordGame:
         self.db, self.now, self.rng = db, now, rng or random.random
         self.db.row_factory = sqlite3.Row
         self.db.executescript(DSCHEMA)
+        for col in ("invite TEXT", "nsfw INTEGER DEFAULT 0"):
+            try:
+                self.db.execute(f"ALTER TABLE dguilds ADD COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass  # column already there
         self.clubs, self.rivalries = data["clubs"], data["rivalries"]
         self.app_id, self.tg_link = app_id, tg_link
 
@@ -146,17 +171,40 @@ class DiscordGame:
         return (f"https://discord.com/oauth2/authorize?client_id={self.app_id}"
                 "&scope=bot+applications.commands&permissions=0")
 
-    def buttons(self, lang):
+    def week(self):
+        return datetime.fromtimestamp(self.now() - 7 * 86400 + 3 * 3600, TZ).strftime("%Y-%m-%d")
+
+    def board(self):
+        """Server War: this week's score per server (hits x10 + duel wins x5), best first."""
+        w = self.week()
+        rows = self.db.execute(
+            "SELECT g.id, g.name, g.invite, g.nsfw, "
+            "(SELECT COUNT(*) FROM dhits h WHERE h.guild=g.id AND h.day>=?)*10 + "
+            "(SELECT COUNT(*) FROM dduels d WHERE d.guild=g.id AND d.day>=? AND d.winner IS NOT NULL)*5 AS s "
+            "FROM dguilds g WHERE g.left_at IS NULL ORDER BY s DESC, g.joined", (w, w)).fetchall()
+        return [r for r in rows if r["s"] > 0]
+
+    def spotlight(self):
+        """The best server this week that entered with /promote, is not adult-only and is not banned."""
+        ban = set((self.one("SELECT v FROM meta WHERE k='dban'") or {"v": ""})["v"].split(","))
+        for r in self.board():
+            if r["invite"] and r["nsfw"] not in (1, 3) and r["id"] not in ban:
+                return r
+        return None
+
+    def buttons(self, lang, spot=None):
         row = [{"type": 2, "style": 5, "label": T[lang]["hq"], "url": HQ},
                {"type": 2, "style": 5, "label": T[lang]["tg"], "url": self.tg_link + "?start=dc"}]
         if self.app_id:
             row.insert(0, {"type": 2, "style": 5, "label": T[lang]["add"], "url": self.invite_url()})
+        if spot:
+            row.append({"type": 2, "style": 5, "label": T[lang]["spot_btn"], "url": spot["invite"]})
         return [{"type": 1, "components": row}]
 
-    def reply(self, text, lang, buttons=True):
+    def reply(self, text, lang, buttons=True, spot=None):
         d = {"content": text, "allowed_mentions": {"parse": []}}
         if buttons:
-            d["components"] = self.buttons(lang)
+            d["components"] = self.buttons(lang, spot)
         return {"type": 4, "data": d}
 
     # ---------- interactions ----------
@@ -204,32 +252,56 @@ class DiscordGame:
             streak, d = 0, datetime.strptime(day, "%Y-%m-%d")
             while self.one("SELECT 1 FROM dhits WHERE day=? AND user_id=?", d.strftime("%Y-%m-%d"), uid) and streak < 365:
                 streak, d = streak + 1, d - timedelta(days=1)
+            mine = ""
+            if guild:
+                b = self.board()
+                pos = next((i for i, r in enumerate(b, 1) if r["id"] == guild), 0)
+                if pos:
+                    mine = T[lang]["myserver"].format(rank=pos, s=b[pos - 1]["s"])
             status = (T[lang]["ahead"].format(d=p - rp) if p > rp else
                       T[lang]["behind"].format(d=rp - p) if p < rp else T[lang]["tie"])
             return self.reply(T[lang]["hit"].format(c=self.name(cid, lang), p=p, rank=rank,
                                                     r=self.name(r, lang) if r else "-", rp=rp, status=status,
-                                                    streak=streak), lang)
+                                                    streak=streak) + mine, lang, spot=self.spotlight())
         if cmd == "war":
             rows = self.db.execute("SELECT club, power FROM cpower WHERE club IN (%s) ORDER BY power DESC LIMIT 10"
                                    % ",".join("?" * len(self.clubs)), tuple(self.clubs)).fetchall()
             medals = ["🥇", "🥈", "🥉"]
             body = "\n".join(f"{medals[i] if i < 3 else f'{i + 1}.'} {self.name(r['club'], lang)} — **{r['power']}**"
                              for i, r in enumerate(rows)) or "—"
-            week = datetime.fromtimestamp(self.now() - 7 * 86400 + 3 * 3600, TZ).strftime("%Y-%m-%d")
-            top = self.db.execute("SELECT g.name, COUNT(*) n FROM dhits h JOIN dguilds g ON g.id=h.guild "
-                                  "WHERE h.day>=? GROUP BY h.guild ORDER BY n DESC LIMIT 5", (week,)).fetchall()
+            top = self.board()[:5]
             servers = T[lang]["servers"].format(rows="\n".join(
-                f"{i}. {r['name'][:40]} — {r['n'] * 10}" for i, r in enumerate(top, 1))) if top else ""
+                f"{i}. {r['name'][:40]} — {r['s']}" for i, r in enumerate(top, 1))) if top else ""
+            spot = self.spotlight()
+            if spot:
+                servers += T[lang]["spot"].format(n=spot["name"][:40], s=spot["s"], url=spot["invite"])
             return self.reply(T[lang]["war"].format(
                 rows=body, servers=servers, players=self.one("SELECT COUNT(*) FROM dusers")[0],
-                guilds=self.one("SELECT COUNT(*) FROM dguilds WHERE left_at IS NULL")[0]), lang)
+                guilds=self.one("SELECT COUNT(*) FROM dguilds WHERE left_at IS NULL")[0]), lang, spot=spot)
         if cmd == "invite":
             return self.reply(T[lang]["invite"], lang)
+        if cmd == "promote":
+            return self.promote(lang, member, guild, str(opts.get("invite") or ""))
         if cmd == "duel":
             return self.duel_start(it, lang, uid, u, opts, guild)
         if cmd == "help":
             return self.reply(T[lang]["help"], lang)
         return self.reply(T[lang]["need_team"], lang, False)
+
+    def promote(self, lang, member, guild, link):
+        if not guild:
+            return self.plain(T[lang]["promote_dm"])
+        if not int(member.get("permissions") or 0) & MANAGE_GUILD:
+            return self.plain(T[lang]["promote_perm"])
+        m = INVITE_RE.match(link.strip())
+        if not m:
+            return self.plain(T[lang]["promote_bad"])
+        url = "https://discord.gg/" + m.group(1)
+        self.q("INSERT INTO dguilds(id, name, members, joined) VALUES(?, '?', 0, ?) ON CONFLICT(id) DO NOTHING",
+               guild, int(self.now()))
+        self.q("UPDATE dguilds SET invite=?, left_at=NULL WHERE id=?", url, guild)
+        n = self.one("SELECT name FROM dguilds WHERE id=?", guild)["name"]
+        return self.reply(T[lang]["promote_ok"].format(n=n), lang)
 
     def plain(self, text):
         return {"type": 4, "data": {"content": text, "flags": 64}}
@@ -278,8 +350,10 @@ class DiscordGame:
 
     def guild_join(self, g):
         self.q("INSERT INTO dguilds(id, name, members, joined) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
-               "name=excluded.name, members=excluded.members, left_at=NULL",
-               str(g.get("id")), g.get("name", "?"), int(g.get("member_count") or 0), int(self.now()))
+               "name=excluded.name, members=CASE WHEN excluded.members>0 THEN excluded.members ELSE members END, "
+               "left_at=NULL", str(g.get("id")), g.get("name", "?"), int(g.get("member_count") or 0), int(self.now()))
+        if "nsfw_level" in g:
+            self.q("UPDATE dguilds SET nsfw=? WHERE id=?", int(g.get("nsfw_level") or 0), str(g.get("id")))
 
     def guild_leave(self, g):
         if not g.get("unavailable"):
