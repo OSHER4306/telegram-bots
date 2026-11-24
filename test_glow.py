@@ -84,7 +84,7 @@ msg(12, "/delete")
 assert g.one("SELECT blocked FROM gusers WHERE id=12")["blocked"] == 1
 msg(12, "/rate")
 assert "אין גישה" in api.texts(12)
-msg(13, "/start"); cb(13, "agree"); msg(13, "abc")
+msg(13, "/start"); cb(13, "agree"); msg(13, photo=[{"file_id": "p13", "width": 10, "height": 10}]); msg(13, "abc")
 assert "4 ספרות" in api.texts(13)
 
 # 3. upload: biggest photo kept, live video required, owner gets photo + video with approve buttons
@@ -329,7 +329,7 @@ assert "נתת 9" in cap
 msg(900, "📊 הציון שלי")  # the persistent menu button works like /me
 assert "שלח סלפי" in api.texts(900)
 msg(900, photo=[{"file_id": "g900", "width": 500, "height": 500}])
-assert "עוד 2 שאלות" in api.texts(900)
+assert "עוד שאלה" in api.texts(900)
 cb(900, "g:m"); cb(900, "p:f")
 assert g.one("SELECT state FROM gusers WHERE id=900")["state"] == "live"
 msg(900, video_note={"file_id": "v900"})
@@ -361,5 +361,32 @@ assert "• " in str(last["reply_markup"])
 msg(905, "/link")
 assert "t.me/share/url" in str(api.to(905)[-1][1]) and "r_905" in str(api.to(905)[-1][1])
 assert "t.me/share/url" in str([p for m, p in api.to(900) if "אושרה" in (p.get("text") or "")])
+
+# 21. exactly like Hot or Not: one 18+ tap and the first photo is already there, no questions;
+#     the year is asked only on upload (and still blocks minors); Meet Me double opt-in
+msg(910, "/start"); cb(910, "agree")
+assert g.one("SELECT state FROM gusers WHERE id=910")["state"] == "guest"
+assert [p for m, p in api.to(910) if m == "sendPhoto"], "photo right after the single tap"
+msg(911, "/start"); cb(911, "agree"); msg(911, photo=[{"file_id": "kid", "width": 9, "height": 9}]); msg(911, "2012")
+assert g.one("SELECT blocked FROM gusers WHERE id=911")["blocked"] == 1
+def member(uid, gender):
+    msg(uid, "/start"); cb(uid, "agree")
+    msg(uid, photo=[{"file_id": f"m{uid}", "width": 500, "height": 500}]); msg(uid, "1994"); cb(uid, f"g:{gender}")
+    msg(uid, video_note={"file_id": f"v{uid}"}); cb(OWNER, f"ok:{pid_of(uid)}")
+member(920, "m"); member(921, "f")
+assert g.one("SELECT state, pref FROM gusers WHERE id=920")["pref"] == "a"
+assert "Meet Me" in api.texts(920)
+cb(920, "mt:1"); cb(921, "mt:1")
+cb(910, f"i:{pid_of(921)}")  # a guest with no photo can't show interest
+assert "צריך תמונה" in str([p for m, p in api.to(910) if m == "answerCallbackQuery"] or api.calls[-1])
+assert not g.one("SELECT 1 FROM gmeet WHERE a=910")
+cb(920, f"i:{pid_of(921)}")
+assert "יש התאמה!" not in api.texts(920)
+cb(921, f"i:{pid_of(920)}")
+assert "יש התאמה!" in api.texts(920) and "יש התאמה!" in api.texts(921)
+assert "tg://user?id=921" in str(api.to(920)[-1][1]) or "t.me/" in str(api.to(920)[-1][1])
+card = [p for m, p in api.calls if p.get("chat_id") == 910 and m in ("sendPhoto", "editMessageMedia")]
+msg(921, "/delete")
+assert not g.one("SELECT 1 FROM gmeet WHERE a=921 OR b=921")
 
 print("GLOW TESTS PASSED")
