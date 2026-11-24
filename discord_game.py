@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS dhits(day TEXT, user_id TEXT, club TEXT, guild TEXT, 
 CREATE TABLE IF NOT EXISTS dguilds(id TEXT PRIMARY KEY, name TEXT, members INTEGER, joined INTEGER, left_at INTEGER);
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS dduels(id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT, a TEXT, b TEXT, winner TEXT, guild TEXT);
+CREATE TABLE IF NOT EXISTS dlinks(code TEXT PRIMARY KEY, discord_id TEXT, guild TEXT, tg_id INTEGER, created INTEGER);
+CREATE TABLE IF NOT EXISTS dbonus(day TEXT, tg_id INTEGER, guild TEXT, PRIMARY KEY(day, tg_id));
 """
 
 T = {
@@ -66,6 +68,9 @@ T = {
         "promote_bad": "That doesn't look like a server invite. Use a permanent link like **https://discord.gg/yourcode**.",
         "promote_perm": "Only server admins (Manage Server) can enter the server in the Server War.",
         "promote_dm": "Use **/promote** inside your server.",
+        "tg_tip": "\n📱 **/link** your Telegram — your daily Telegram penalty counts **DOUBLE (+20)** for this server!",
+        "link": "📱 **Link Telegram → double points for your server**\nTap the button, press **Start** in Telegram, and take your daily penalty there.\nEvery day you play on Telegram adds **+20** to this server in the Server War (a /hit here is +10).",
+        "link_btn": "📱 Link Telegram (x2)",
     },
     "he": {
         "need_team": "⚽ קודם בחר קבוצה: כתוב **/team** ובחר את הקבוצה שלך.",
@@ -99,6 +104,9 @@ T = {
         "promote_bad": "זה לא נראה כמו קישור הזמנה. שימו קישור קבוע כמו **https://discord.gg/הקוד-שלכם**.",
         "promote_perm": "רק מנהלי שרת (Manage Server) יכולים לרשום את השרת למלחמת השרתים.",
         "promote_dm": "השתמשו ב-**/promote** בתוך השרת שלכם.",
+        "tg_tip": "\n📱 **/link** לטלגרם — הפנדל היומי שלך בטלגרם נספר **כפול (+20)** לשרת הזה!",
+        "link": "📱 **חבר את הטלגרם → נקודות כפולות לשרת**\nלחץ על הכפתור, לחץ **Start** בטלגרם ובעט שם את הפנדל היומי.\nכל יום שאתה משחק בטלגרם מוסיף **+20** לשרת הזה במלחמת השרתים (/hit כאן הוא +10).",
+        "link_btn": "📱 חיבור לטלגרם (x2)",
     },
 }
 
@@ -116,6 +124,8 @@ COMMANDS = [
     {"name": "promote", "description": "Admins: enter your server in the Server War — #1 gets advertised everywhere",
      "description_localizations": {"he": "מנהלים: רשמו את השרת למלחמת השרתים — המקום הראשון מפורסם בכל השרתים"},
      "options": [{"type": 3, "name": "invite", "description": "A permanent invite link to your server", "required": True}]},
+    {"name": "link", "description": "Link Telegram — your daily Telegram play counts double for this server",
+     "description_localizations": {"he": "חבר את הטלגרם — המשחק היומי שם נספר כפול לשרת הזה"}},
     {"name": "help", "description": "How to play Fan War",
      "description_localizations": {"he": "איך משחקים"}},
     {"name": "invite", "description": "Add Fan War to another server",
@@ -180,8 +190,9 @@ class DiscordGame:
         rows = self.db.execute(
             "SELECT g.id, g.name, g.invite, g.nsfw, "
             "(SELECT COUNT(*) FROM dhits h WHERE h.guild=g.id AND h.day>=?)*10 + "
-            "(SELECT COUNT(*) FROM dduels d WHERE d.guild=g.id AND d.day>=? AND d.winner IS NOT NULL)*5 AS s "
-            "FROM dguilds g WHERE g.left_at IS NULL ORDER BY s DESC, g.joined", (w, w)).fetchall()
+            "(SELECT COUNT(*) FROM dduels d WHERE d.guild=g.id AND d.day>=? AND d.winner IS NOT NULL)*5 + "
+            "(SELECT COUNT(*) FROM dbonus b WHERE b.guild=g.id AND b.day>=?)*20 AS s "
+            "FROM dguilds g WHERE g.left_at IS NULL ORDER BY s DESC, g.joined", (w, w, w)).fetchall()
         return [r for r in rows if r["s"] > 0]
 
     def spotlight(self):
@@ -262,7 +273,8 @@ class DiscordGame:
                       T[lang]["behind"].format(d=rp - p) if p < rp else T[lang]["tie"])
             return self.reply(T[lang]["hit"].format(c=self.name(cid, lang), p=p, rank=rank,
                                                     r=self.name(r, lang) if r else "-", rp=rp, status=status,
-                                                    streak=streak) + mine, lang, spot=self.spotlight())
+                                                    streak=streak) + mine + (T[lang]["tg_tip"] if guild else ""),
+                              lang, spot=self.spotlight())
         if cmd == "war":
             rows = self.db.execute("SELECT club, power FROM cpower WHERE club IN (%s) ORDER BY power DESC LIMIT 10"
                                    % ",".join("?" * len(self.clubs)), tuple(self.clubs)).fetchall()
@@ -280,6 +292,8 @@ class DiscordGame:
                 guilds=self.one("SELECT COUNT(*) FROM dguilds WHERE left_at IS NULL")[0]), lang, spot=spot)
         if cmd == "invite":
             return self.reply(T[lang]["invite"], lang)
+        if cmd == "link":
+            return self.link(lang, uid, guild)
         if cmd == "promote":
             return self.promote(lang, member, guild, str(opts.get("invite") or ""))
         if cmd == "duel":
@@ -302,6 +316,13 @@ class DiscordGame:
         self.q("UPDATE dguilds SET invite=?, left_at=NULL WHERE id=?", url, guild)
         n = self.one("SELECT name FROM dguilds WHERE id=?", guild)["name"]
         return self.reply(T[lang]["promote_ok"].format(n=n), lang)
+
+    def link(self, lang, uid, guild):
+        import secrets
+        code = secrets.token_hex(5)
+        self.q("INSERT INTO dlinks(code, discord_id, guild, created) VALUES(?,?,?,?)", code, uid, guild, int(self.now()))
+        return {"type": 4, "data": {"content": T[lang]["link"], "flags": 64, "components": [{"type": 1, "components": [
+            {"type": 2, "style": 5, "label": T[lang]["link_btn"], "url": f"{self.tg_link}?start=d{code}"}]}]}}
 
     def plain(self, text):
         return {"type": 4, "data": {"content": text, "flags": 64}}
