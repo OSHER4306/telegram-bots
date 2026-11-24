@@ -504,4 +504,13 @@ assert "You're in" in r["data"]["content"]
 r = dg.handle({"type": 2, "id": "1", "token": "t", "locale": "en-US", "user": {"id": "8001", "username": "dm"},
                "data": {"name": "hit", "options": []}})
 assert "+10" in r["data"]["content"] and "/link" not in r["data"]["content"]
+# 36. Glow: owner stores the Glow token with /glow (message deleted, never echoed); others can't
+msg(priv(1), user(1), "/glow short")
+assert "/glow" in api.last(1)["text"]
+msg(priv(1), user(1), "/glow 123456789:" + "A" * 35)
+assert bot.one("SELECT v FROM meta WHERE k='glow_token'")["v"].startswith("123456789:")
+assert "AAAA" not in api.last(1)["text"]
+msg(priv(912), user(912), "/glow 999:" + "B" * 40)
+assert bot.one("SELECT v FROM meta WHERE k='glow_token'")["v"].startswith("123456789:")
+import test_glow  # noqa: E402,F401  (runs the Glow suite)
 print("ALL TESTS PASSED")
