@@ -507,6 +507,8 @@ class Bot(RaidMixin):
             kb = [[{"text": str(i), "callback_data": f"ph:{mid}:{gid}:{i}"} for i in range(0, 4)],
                   [{"text": str(i), "callback_data": f"ph:{mid}:{gid}:{i}"} for i in range(4, 8)]]
             return self.send(u["id"], self.t(lang, "ask_home", home=self.club(m["home"], lang), away=self.club(m["away"], lang)), kb)
+        if payload.startswith("d") and len(payload) == 11:  # Discord link: d<code> from /link
+            return self.discord_link(u, payload[1:])
         if payload.startswith("j") and not u["club"]:  # recruit link: j<club>_<referrer>
             cid, _, ref = payload[1:].partition("_")
             if cid in CLUBS:
@@ -607,6 +609,7 @@ class Bot(RaidMixin):
             self.q("INSERT OR REPLACE INTO pen(day,user_id,club,shoot,dive) VALUES(?,?,?,?,?)",
                    self.pen_day(), u["id"], u["club"], shoot, dive)
             self.log("pen", u["id"], "ev_pen", name=esc(u["name"]), club=self.club(u["club"], self.owner_lang()))
+            self.discord_bonus(u["id"])
             return self.send(u["id"], self.t(lang, "pen_saved", streak=self.streak(u["id"]), pts=self.user_points(u["id"])))
         if kind == "tb" and u["club"]:
             answer()
@@ -800,6 +803,36 @@ class Bot(RaidMixin):
         self.q("INSERT INTO meta(k, v) VALUES('discord_token', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", args[0])
         self.send(self.owner, "✅ הטוקן נשמר. מחבר את הבוט לדיסקורד…")
         self.discord_start()
+
+    def discord_link(self, u, code):
+        """A Discord player tapped /link: tie this Telegram user to their Discord server for double points."""
+        try:
+            row = self.one("SELECT * FROM dlinks WHERE code=?", code)
+        except sqlite3.OperationalError:
+            row = None
+        lang = u["lang"]
+        if not row or (row["tg_id"] and row["tg_id"] != u["id"]):
+            return self.send(u["id"], "❌ הקישור לא תקף. כתוב /link שוב בדיסקורד." if lang == "he" else "❌ This link isn't valid. Type /link again in Discord.")
+        self.q("UPDATE dlinks SET tg_id=NULL WHERE tg_id=?", u["id"])
+        self.q("UPDATE dlinks SET tg_id=? WHERE code=?", u["id"], code)
+        if not u["club"]:
+            d = self.one("SELECT club FROM dusers WHERE id=?", row["discord_id"])
+            if d and d["club"] in CLUBS:
+                self.set_user_club(u["id"], d["club"])
+        g = self.one("SELECT name FROM dguilds WHERE id=?", row["guild"]) if row["guild"] else None
+        name = html.escape(g["name"]) if g else "Discord"
+        self.send(u["id"], (f"✅ מחובר! כל פנדל יומי כאן מוסיף <b>+20</b> לשרת <b>{name}</b> במלחמת השרתים."
+                            if lang == "he" else f"✅ Linked! Every daily penalty here adds <b>+20</b> to <b>{name}</b> in the Server War."))
+        u = self.one("SELECT * FROM users WHERE id=?", u["id"])
+        return self.show_home(u) if u["club"] else self.send(u["id"], self.t(lang, "pick_region"), self.region_kb(lang))
+
+    def discord_bonus(self, tg_id):
+        try:
+            row = self.one("SELECT guild FROM dlinks WHERE tg_id=? AND guild<>'' ORDER BY created DESC", tg_id)
+            if row:
+                self.q("INSERT OR IGNORE INTO dbonus(day, tg_id, guild) VALUES(?,?,?)", self.pen_day(), tg_id, row["guild"])
+        except sqlite3.OperationalError:
+            pass  # Discord tables not created yet
 
     def discord_servers(self, cmd, args):
         """Owner: /dservers lists Discord servers in the Server War; /dban <id> hides one from the spotlight."""
