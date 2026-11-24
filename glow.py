@@ -13,7 +13,9 @@ import random
 import sqlite3
 import threading
 import time
+import http.client
 import urllib.request
+from collections import deque
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -183,6 +185,8 @@ class Glow:
             except sqlite3.OperationalError:
                 pass
         self.fresh = None
+        self.perf = deque(maxlen=100)  # (seconds to handle, seconds since the user sent it)
+        self.api_timing = deque()
 
     # ---------- helpers ----------
     def q(self, sql, *a):
@@ -659,6 +663,17 @@ class Glow:
         gv = c("SELECT COUNT(*) FROM gvotes")
         gshared = c("SELECT COUNT(DISTINCT photo) FROM gvotes")
         gvoters = c("SELECT COUNT(DISTINCT voter) FROM gvotes")
+        speed = "⚡ מהירות: עוד אין מדידות"
+        if self.perf:
+            hs = [h for h, _ in self.perf]
+            lags = [l for _, l in self.perf if l is not None]
+            speed = f"⚡ טיפול בהודעה: ממוצע {sum(hs) / len(hs):.1f} שנ׳ · הכי איטי {max(hs):.1f} שנ׳"
+            if lags:
+                speed += f"\n⏱ מרגע השליחה עד תשובה: ממוצע {sum(lags) / len(lags):.1f} שנ׳"
+        calls = [x for x in self.api_timing if x[1] != "getUpdates"]
+        if calls:
+            sec, meth = max(calls)
+            speed += f"\n📡 קריאה לטלגרם: ממוצע {sum(x for x, _ in calls) / len(calls):.2f} שנ׳ · הכי איטית {sec:.1f} שנ׳ ({meth})"
         lines = [
             "📊 <b>Glow — סטטיסטיקה (רק לך)</b>",
             "",
@@ -673,6 +688,7 @@ class Glow:
             f"⭐ דירוגים: 24ש׳ {r24} · סה״כ {rall} · ממוצע {avg:.1f}" if avg else f"⭐ דירוגים: 24ש׳ {r24} · סה״כ {rall}",
             f"📣 דירוג בקבוצות: {gshared} תמונות שותפו · {gv} דירוגים · {gvoters} אנשים דירגו",
             f"🚩 דיווחים: {reps} · 🧪 תמונות דוגמה: {smp} (/samples)",
+            speed,
             "",
             "/users — אחרונים · /u &lt;id&gt; — משתמש · /feed — התראות חיות",
         ]
@@ -816,17 +832,50 @@ class Glow:
 
 # ---------- network ----------
 class Api:
+    """Telegram Bot API over kept-alive HTTPS connections: no new DNS lookup and TLS handshake per call."""
+
     def __init__(self, token):
-        self.base = f"https://api.telegram.org/bot{token}/"
+        self.path = f"/bot{token}/"
+        self.base = "https://api.telegram.org" + self.path
+        self.conns = {}
+        self.slow = deque(maxlen=50)  # (seconds, method) of every call
+
+    def _conn(self, key, timeout):
+        c = self.conns.get(key)
+        if c is None:
+            c = self.conns[key] = http.client.HTTPSConnection("api.telegram.org", timeout=timeout)
+        return c
 
     def call(self, method, **params):
-        req = urllib.request.Request(self.base + method, data=json.dumps(params).encode(),
-                                     headers={"Content-Type": "application/json"})
+        key = "poll" if method == "getUpdates" else "send"
+        timeout = 70 if key == "poll" else 20
+        body = json.dumps(params).encode()
+        for attempt in range(2):
+            t0 = time.time()
+            try:
+                c = self._conn(key, timeout)
+                c.request("POST", self.path + method, body, {"Content-Type": "application/json", "Connection": "keep-alive"})
+                data = json.loads(c.getresponse().read())
+                self.slow.append((time.time() - t0, method))
+                if data.get("ok"):
+                    return data.get("result")
+                wait = (data.get("parameters") or {}).get("retry_after")
+                if wait and attempt == 0:
+                    time.sleep(min(wait, 5))
+                    continue
+                print("glow api error", method, data.get("description"))
+                return None
+            except Exception as e:
+                self.conns.pop(key, None)
+                if attempt:
+                    print("glow api error", method, e)
+        # last resort: the old one-shot request (honours proxy settings)
         try:
-            with urllib.request.urlopen(req, timeout=70) as r:
+            req = urllib.request.Request(self.base + method, data=body, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.loads(r.read()).get("result")
         except Exception as e:
-            print("glow api error", method, e)
+            print("glow api error (fallback)", method, e)
             return None
 
 
@@ -847,6 +896,7 @@ def run(token, db_path, owner):
     except Exception as e:
         print("glow owner commands:", e)
     g = Glow(api, sqlite3.connect(db_path, timeout=30), owner, me.get("username", "GlowRateMeBot"))
+    g.api_timing = api.slow
     offset = 0
     while True:
         ups = api.call("getUpdates", offset=offset, timeout=50, allowed_updates=["message", "callback_query", "inline_query"])
@@ -855,10 +905,13 @@ def run(token, db_path, owner):
             continue
         for upd in ups:
             offset = upd["update_id"] + 1
+            t0 = time.time()
             try:
                 g.handle(upd)
             except Exception as e:
                 print("glow error", e)
+            sent = (upd.get("message") or {}).get("date")
+            g.perf.append((time.time() - t0, time.time() - sent if sent else None))
 
 
 def start_thread(token, db_path, owner):
