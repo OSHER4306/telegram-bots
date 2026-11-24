@@ -364,4 +364,38 @@ msg(priv(912), user(912), "/start jfcb_910")
 cb(priv(912), user(912), "wh")
 assert "שגרירי השבוע" in api.last(912)["text"] and "U910 — 2" in api.last(912)["text"]
 
+# 30. Discord: same world war, slash commands, shared cpower with Telegram
+import discord_game as DG
+dg = DG.DiscordGame(bot.db, B.DATA, app_id="999", now=lambda: clock[0])
+bot.row = None
+def it(cmd, uid_, locale="en-US", **opts):
+    return dg.handle({"type": 2, "id": "1", "token": "t", "guild_id": "g1", "locale": locale,
+                      "member": {"user": {"id": uid_, "username": f"d{uid_}"}},
+                      "data": {"name": cmd, "options": [{"name": k, "value": v} for k, v in opts.items()]}})
+assert "Pick your team" in it("hit", "5001")["data"]["content"]
+ac = dg.handle({"type": 4, "locale": "en-US", "user": {"id": "5001"},
+                "data": {"name": "team", "options": [{"name": "club", "value": "madr"}]}})
+assert ac["type"] == 8 and ac["data"]["choices"][0]["value"] == "rma"
+before = dg.power("rma")
+assert "You're in" in it("team", "5001", club="rma")["data"]["content"]
+r = it("hit", "5001")
+assert "+10" in r["data"]["content"] and dg.power("rma") == before + 10
+assert "client_id=999" in r["data"]["components"][0]["components"][0]["url"]
+assert "already hit" in it("hit", "5001")["data"]["content"] and dg.power("rma") == before + 10
+assert "נכנסת" in it("team", "5002", locale="he", club="Barcelona")["data"]["content"]
+dg.guild_join({"id": "g1", "name": "Madridistas", "member_count": 500})
+w = it("war", "5002", locale="he")["data"]["content"]
+assert "מלחמת האוהדים" in w and "2 אוהדים" in w and "1 שרתי" in w
+dg.guild_leave({"id": "g1"})
+assert dg.one("SELECT COUNT(*) FROM dguilds WHERE left_at IS NULL")[0] == 0
+assert "Add **Fan War**" in it("invite", "5003")["data"]["content"]
+msg(priv(1), user(1), "/admin")
+assert "שחקנים: <b>2</b>" in api.last(1)["text"] and "מכות היום: <b>1</b>" in api.last(1)["text"]
+# owner stores a Discord token from private chat; message deleted; others cannot
+msg(priv(1), user(1), "/discord " + "x" * 60)
+assert bot.one("SELECT v FROM meta WHERE k='discord_token'")["v"] == "x" * 60
+assert any(m == "deleteMessage" for m, p in api.calls)
+msg(priv(912), user(912), "/discord " + "y" * 60)
+assert bot.one("SELECT v FROM meta WHERE k='discord_token'")["v"] == "x" * 60
+
 print("ALL TESTS PASSED")
