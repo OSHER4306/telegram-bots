@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS gratings(rater INTEGER, photo INTEGER, value INTEGER,
 CREATE TABLE IF NOT EXISTS greports(reporter INTEGER, photo INTEGER, reason TEXT, ts INTEGER, PRIMARY KEY(reporter, photo));
 CREATE TABLE IF NOT EXISTS gnotes(user INTEGER, day TEXT, n INTEGER, PRIMARY KEY(user, day));
 CREATE TABLE IF NOT EXISTS gmeta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS gmeet(a INTEGER, b INTEGER, ts INTEGER, PRIMARY KEY(a, b));
 CREATE TABLE IF NOT EXISTS gvotes(photo INTEGER, voter INTEGER, value INTEGER, ts INTEGER, PRIMARY KEY(photo, voter));
 """
 
@@ -51,9 +52,9 @@ STATE_HE = {"terms": "לא אישר תנאים", "year": "שנת לידה", "gen
 
 T = {
     "he": {
-        "welcome": "✨ <b>Glow — מה הציון האמיתי שלך?</b>\n\nמעלים סלפי, אנשים זרים מדרגים 1–10, ואתה מגלה את הציון שלך ובאיזה אחוזון אתה.\n\n"
-                   "📜 <b>הכללים:</b> רק מגיל 18. רק תמונה שלך. בלי עירום. הציון נראה רק לך. אפשר למחוק הכול בכל רגע עם /delete.",
-        "agree": "✅ אני מעל 18 ומסכים/ה",
+        "welcome": "✨ <b>Glow</b> — דרגו אנשים 1–10, וגלו מה חושבים עליכם.\n\n"
+                   "18+ בלבד · רק תמונה שלך · בלי עירום · מוחקים הכול בכל רגע: /delete",
+        "agree": "🔥 אני מעל 18 · מתחילים",
         "year": "באיזו שנה נולדת? (למשל 1998)",
         "year_bad": "כתוב שנה בת 4 ספרות, למשל 1998.",
         "minor": "⛔ Glow מיועד רק למי שמעל גיל 18. אי אפשר להשתמש בבוט.",
@@ -75,7 +76,15 @@ T = {
         "rv_first": "↩️ נתת {v} · היית מהראשונים לדרג אותו/ה",
         "rv": "↩️ נתת {v} · אחרים נתנו בממוצע {avg} ({n}) {tag}",
         "rv_nice": "😇 נדיב", "rv_hard": "😈 קשוח", "rv_same": "🎯 בול",
-        "two_q": "📸 קיבלתי! עוד 2 שאלות קצרות והתמונה יוצאת לדירוג:",
+        "two_q": "📸 קיבלתי! עוד שאלה קצרה והתמונה יוצאת לדירוג:",
+        "meet_btn": "💘 מעוניין/ת",
+        "meet_ask": "💘 <b>Meet Me</b>: רוצה שמי שמתעניין בך יוכל ללחוץ \"מעוניין/ת\"? רק אם שניכם תלחצו, תקבלו קישור אחד לשני.",
+        "meet_yes": "✅ כן, תכניס אותי", "meet_no": "לא עכשיו",
+        "meet_on": "💘 אתה ב-Meet Me. כשיש התאמה הדדית — תקבל הודעה.",
+        "meet_need": "💘 כדי לסמן עניין צריך תמונה מאושרת ולהיות ב-Meet Me. שלח סלפי!",
+        "meet_sent": "💘 נשלח! אם גם הוא/היא ילחצו — תקבלו התאמה",
+        "match": "💘 <b>יש התאמה!</b> גם {name} מעוניין/ת בך.",
+        "match_btn": "💬 לפתוח צ'אט",
         "me_prov": "📈 תמונה {i}: ציון זמני <b>{s}</b> ({n} דירוגים) · מתייצב ב-{m}",
         "prov_ping": "📈 הדירוגים הראשונים הגיעו! ציון זמני: {s} · /me",
         "kb_rate": "🔥 לדרג", "kb_me": "📊 הציון שלי", "kb_share": "📣 שתף",
@@ -122,9 +131,9 @@ T = {
         "blocked": "⛔ אין גישה לבוט.",
     },
     "en": {
-        "welcome": "✨ <b>Glow — what's your real score?</b>\n\nUpload a selfie, strangers rate it 1–10, and you find out your score and your percentile.\n\n"
-                   "📜 <b>Rules:</b> 18+ only. Only a photo of you. No nudity. Only you see your score. Delete everything anytime with /delete.",
-        "agree": "✅ I'm 18+ and I agree",
+        "welcome": "✨ <b>Glow</b> — rate people 1–10 and find out what they think of you.\n\n"
+                   "18+ only · only your own photo · no nudity · delete everything anytime: /delete",
+        "agree": "🔥 I'm over 18 · let's go",
         "year": "What year were you born? (e.g. 1998)",
         "year_bad": "Type a 4-digit year, e.g. 1998.",
         "minor": "⛔ Glow is for adults (18+) only. You can't use this bot.",
@@ -146,7 +155,15 @@ T = {
         "rv_first": "↩️ You gave {v} · you're one of the first to rate them",
         "rv": "↩️ You gave {v} · others gave {avg} on average ({n}) {tag}",
         "rv_nice": "😇 generous", "rv_hard": "😈 tough", "rv_same": "🎯 spot on",
-        "two_q": "📸 Got it! 2 quick questions and your photo goes live:",
+        "two_q": "📸 Got it! One quick question and your photo goes live:",
+        "meet_btn": "💘 Interested",
+        "meet_ask": "💘 <b>Meet Me</b>: let people who like you tap \"Interested\"? Only if you both tap, you get each other's link.",
+        "meet_yes": "✅ Yes, add me", "meet_no": "Not now",
+        "meet_on": "💘 You're in Meet Me. You'll hear from us on a mutual match.",
+        "meet_need": "💘 To show interest you need an approved photo and Meet Me on. Send a selfie!",
+        "meet_sent": "💘 Sent! If they tap too, it's a match",
+        "match": "💘 <b>It's a match!</b> {name} is interested in you too.",
+        "match_btn": "💬 Open chat",
         "me_prov": "📈 Photo {i}: early score <b>{s}</b> ({n} ratings) · settles at {m}",
         "prov_ping": "📈 Your first ratings are in! Early score: {s} · /me",
         "kb_rate": "🔥 Rate", "kb_me": "📊 My score", "kb_share": "📣 Share",
@@ -203,7 +220,7 @@ class Glow:
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         for table, col in (("gusers", "seen INTEGER"), ("gusers", "uname TEXT"), ("gphotos", "sample TEXT"),
-                           ("gphotos", "prov INTEGER DEFAULT 0")):
+                           ("gphotos", "prov INTEGER DEFAULT 0"), ("gusers", "meet INTEGER DEFAULT 0")):
             try:
                 self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col}")
             except sqlite3.OperationalError:
@@ -343,6 +360,8 @@ class Glow:
         row1 = [{"text": str(i), "callback_data": f"r:{photo}:{i}"} for i in range(1, 6)]
         row2 = [{"text": str(i), "callback_data": f"r:{photo}:{i}"} for i in range(6, 11)]
         pref = u["pref"] or "a"
+        own = self.one("SELECT u.meet FROM gphotos p JOIN gusers u ON u.id=p.owner WHERE p.id=?", photo)
+        row2 = row2 if not (own and own["meet"]) else row2 + [{"text": self.t(u, "meet_btn"), "callback_data": f"i:{photo}"}]
         row3 = [{"text": ("• " if pref == k else "") + self.t(u, "f_" + k), "callback_data": f"f:{k}"} for k in ("f", "m", "a")]
         return {"inline_keyboard": [row1, row2, row3 + [{"text": self.t(u, "report"), "callback_data": f"rep:{photo}"}]]}
 
@@ -434,7 +453,7 @@ class Glow:
                     text = cmd
         if text.startswith("/"):
             return self.on_command(u, m, text)
-        if u["state"] == "year" and text:
+        if text and (u["state"] == "year" or (u["state"] == "guest" and text.isdigit() and len(text) == 4)):
             return self.on_year(u, text)
         cap = (m.get("caption") or "").strip().lower().split()
         mode = (self.one("SELECT v FROM gmeta WHERE k='sample_mode'") or [""])[0] if u["id"] == self.owner else ""
@@ -507,6 +526,37 @@ class Glow:
             return self.send(u["id"], self.t(u, "live"))
         return self.send(u["id"], self.t(u, "help"))
 
+    def finish_profile(self, u):
+        """No questionnaire: everything not asked defaults (who to see = everyone, changeable on the card)."""
+        self.q("UPDATE gusers SET state='ready', pref=COALESCE(pref, 'a') WHERE id=?", u["id"])
+        u = self.one("SELECT * FROM gusers WHERE id=?", u["id"])
+        if self.one("SELECT 1 FROM gphotos WHERE owner=? AND status='new'", u["id"]):
+            if u["live"]:
+                return self.submit(u)
+            self.q("UPDATE gusers SET state='live' WHERE id=?", u["id"])
+            return self.send(u["id"], self.t(u, "live"))
+        self.send(u["id"], self.t(u, "photo"), reply=self.menu(u))
+        if u["ref"]:
+            self.show_next(u)
+
+    def interest(self, u, pid, answer):
+        """Meet Me, Hot or Not's double opt-in: a link is shared only when both said yes."""
+        p = self.one("SELECT * FROM gphotos WHERE id=? AND status='live' AND owner<>0", pid)
+        o = p and self.one("SELECT * FROM gusers WHERE id=?", p["owner"])
+        if not o or o["id"] == u["id"] or not o["meet"]:
+            return answer()
+        if not u["meet"] or not self.one("SELECT 1 FROM gphotos WHERE owner=? AND status='live'", u["id"]):
+            return answer(self.t(u, "meet_need"))
+        self.q("INSERT OR IGNORE INTO gmeet(a, b, ts) VALUES(?,?,?)", u["id"], o["id"], int(self.now()))
+        if self.one("SELECT 1 FROM gmeet WHERE a=? AND b=?", o["id"], u["id"]):
+            answer()
+            for me, other in ((u, o), (o, u)):
+                url = f"https://t.me/{other['uname']}" if other["uname"] else f"tg://user?id={other['id']}"
+                self.send(me["id"], self.t(me, "match", name=other["name"] or "🙂"), [[{"text": self.t(me, "match_btn"), "url": url}]])
+            self.feed(f"💘 התאמה: {self.who(u)} ↔ {self.who(o)}")
+            return
+        answer(self.t(u, "meet_sent"))
+
     def ask_gender(self, u):
         self.send(u["id"], self.t(u, "gender"), [[{"text": self.t(u, k), "callback_data": f"g:{k[2]}"} for k in ("g_m", "g_f", "g_o")]])
 
@@ -519,10 +569,13 @@ class Glow:
         if datetime.fromtimestamp(self.now(), TZ).year - int(text) < 18:
             self.q("UPDATE gusers SET blocked=1, year=? WHERE id=?", int(text), u["id"])
             return self.send(u["id"], self.t(u, "minor"))
-        self.q("UPDATE gusers SET year=?, state='guest' WHERE id=?", int(text), u["id"])
+        self.q("UPDATE gusers SET year=? WHERE id=?", int(text), u["id"])
         u = self.one("SELECT * FROM gusers WHERE id=?", u["id"])
-        self.send(u["id"], self.t(u, "go"), reply=self.menu(u))
-        self.show_next(u)
+        if u["state"] == "year":  # asked only when someone uploads a selfie
+            if not u["gender"]:
+                self.q("UPDATE gusers SET state='gender' WHERE id=?", u["id"])
+                return self.ask_gender(u)
+            return self.finish_profile(u)
 
     def on_photo(self, u, m):
         if u["state"] == "guest":
@@ -530,7 +583,13 @@ class Glow:
             self.q("DELETE FROM gphotos WHERE owner=? AND status='new'", u["id"])
             self.q("INSERT INTO gphotos(owner, file, status, created) VALUES(?,?,'new',?)", u["id"], file, int(self.now()))
             self.send(u["id"], self.t(u, "two_q"))
-            return self.ask_gender(u) if not u["gender"] else self.ask_pref(u)
+            if not u["year"]:
+                self.q("UPDATE gusers SET state='year' WHERE id=?", u["id"])
+                return self.send(u["id"], self.t(u, "year"))
+            if not u["gender"]:
+                self.q("UPDATE gusers SET state='gender' WHERE id=?", u["id"])
+                return self.ask_gender(u)
+            return self.finish_profile(u)
         if u["state"] not in ("ready", "photo"):
             return self.resume(u)
         n = self.one("SELECT COUNT(*) FROM gphotos WHERE owner=? AND status IN ('live','pending','new','hidden')", u["id"])[0]
@@ -610,6 +669,7 @@ class Glow:
         self.q("DELETE FROM gphotos WHERE owner=?", u["id"])
         self.q("DELETE FROM gratings WHERE rater=?", u["id"])
         self.q("DELETE FROM gnotes WHERE user=?", u["id"])
+        self.q("DELETE FROM gmeet WHERE a=? OR b=?", u["id"], u["id"])
         blocked = u["blocked"]
         self.q("DELETE FROM gusers WHERE id=?", u["id"])
         if blocked:  # someone under 18 stays blocked, without their data
@@ -816,28 +876,26 @@ class Glow:
             return self.review(int(rest), kind == "ok", answer)
         if kind == "agree" and u["state"] == "terms":
             answer()
-            self.q("UPDATE gusers SET state='year' WHERE id=?", u["id"])
-            return self.send(u["id"], self.t(u, "year"))
-        if kind == "g" and rest in ("m", "f", "o") and u["state"] in ("gender", "guest"):
+            self.q("UPDATE gusers SET state='guest' WHERE id=?", u["id"])
+            u = self.one("SELECT * FROM gusers WHERE id=?", u["id"])
+            self.send(u["id"], self.t(u, "go"), reply=self.menu(u))
+            return self.show_next(u)
+        if kind == "g" and rest in ("m", "f", "o") and u["state"] in ("gender", "guest", "pref"):
             answer()
             self.q("UPDATE gusers SET gender=? WHERE id=?", rest, u["id"])
-            if u["state"] == "gender":
-                self.q("UPDATE gusers SET state='pref' WHERE id=?", u["id"])
-            return self.ask_pref(u)
-        if kind == "p" and rest in ("m", "f", "a") and u["state"] in ("pref", "guest") and \
-                (u["state"] == "pref" or self.one("SELECT gender FROM gusers WHERE id=?", u["id"])["gender"]):
+            return self.finish_profile(self.one("SELECT * FROM gusers WHERE id=?", u["id"]))
+        if kind == "p" and rest in ("m", "f", "a") and u["state"] in ("pref", "guest", "ready"):
             answer()
-            self.q("UPDATE gusers SET pref=?, state='ready' WHERE id=?", rest, u["id"])
-            u = self.one("SELECT * FROM gusers WHERE id=?", u["id"])
-            if self.one("SELECT 1 FROM gphotos WHERE owner=? AND status='new'", u["id"]):
-                if u["live"]:
-                    return self.submit(u)
-                self.q("UPDATE gusers SET state='live' WHERE id=?", u["id"])
-                return self.send(u["id"], self.t(u, "live"))
-            self.send(u["id"], self.t(u, "photo"), reply=self.menu(u))
-            if u["ref"]:
-                self.show_next(u)
+            self.q("UPDATE gusers SET pref=? WHERE id=?", rest, u["id"])
+            if u["state"] == "pref":
+                return self.finish_profile(self.one("SELECT * FROM gusers WHERE id=?", u["id"]))
             return
+        if kind == "mt" and rest in ("1", "0"):
+            answer()
+            self.q("UPDATE gusers SET meet=? WHERE id=?", int(rest), u["id"])
+            return self.send(u["id"], self.t(u, "meet_on")) if rest == "1" else None
+        if kind == "i" and rest.isdigit() and u["state"] in ("ready", "guest"):
+            return self.interest(u, int(rest), answer)
         if kind == "f" and rest in ("m", "f", "a") and u["state"] in ("ready", "guest"):
             answer()
             self.q("UPDATE gusers SET pref=? WHERE id=?", rest, u["id"])
@@ -917,6 +975,9 @@ class Glow:
         answer("✅ אושרה" if ok else "❌ נדחתה")
         if o:
             self.send(o["id"], self.t(o, "approved" if ok else "rejected"), [self.friends_btn(o)] + self.share_kb(o) if ok else None)
+            if ok and not o["meet"]:
+                self.send(o["id"], self.t(o, "meet_ask"), [[{"text": self.t(o, "meet_yes"), "callback_data": "mt:1"},
+                                                            {"text": self.t(o, "meet_no"), "callback_data": "mt:0"}]])
 
 
 # ---------- network ----------
