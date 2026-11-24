@@ -314,4 +314,42 @@ seq = [Boom(), Ok()]
 real._conn = lambda key, timeout: seq.pop(0)
 assert real.call("sendMessage", chat_id=1, text="x") == 7 and real.slow
 
+# 19. Hot-or-Not flow: 18+ tap and birth year, then rating starts at once; reveal after every vote;
+#     a guest's selfie triggers the two questions; live early score from the 3rd rating
+msg(900, "/start"); cb(900, "agree"); msg(900, "1993")
+assert g.one("SELECT state FROM gusers WHERE id=900")["state"] == "guest"
+assert "מתחילים" in api.texts(900)
+first = [p for m, p in api.to(900) if m == "sendPhoto"]
+assert first, "a guest sees a photo right after the birth year"
+pid = int(first[-1]["reply_markup"]["inline_keyboard"][0][0]["callback_data"].split(":")[1])
+rate(900, pid, 9)
+after = [p for m, p in api.calls if p.get("chat_id") == 900 and m in ("editMessageMedia", "editMessageCaption")][-1]
+cap = (after.get("media") or {}).get("caption") or after.get("caption")
+assert "נתת 9" in cap
+msg(900, "📊 הציון שלי")  # the persistent menu button works like /me
+assert "שלח סלפי" in api.texts(900)
+msg(900, photo=[{"file_id": "g900", "width": 500, "height": 500}])
+assert "עוד 2 שאלות" in api.texts(900)
+cb(900, "g:m"); cb(900, "p:f")
+assert g.one("SELECT state FROM gusers WHERE id=900")["state"] == "live"
+msg(900, video_note={"file_id": "v900"})
+p900 = pid_of(900)
+assert g.one("SELECT status FROM gphotos WHERE id=?", p900)["status"] == "pending"
+cb(OWNER, f"ok:{p900}")
+for r in (901, 902, 903):
+    msg(r, "/start"); cb(r, "agree"); msg(r, "1990")
+    rate(r, p900, 8)
+assert "הדירוגים הראשונים הגיעו" in api.texts(900)
+for i in range(10):
+    msg(900, "/rate")
+    last = [p for m, p in api.calls if p.get("chat_id") == 900 and m in ("sendPhoto", "editMessageMedia")][-1]
+    kb = last.get("reply_markup") or {}
+    if not kb.get("inline_keyboard"):
+        break
+    rate(900, int(kb["inline_keyboard"][0][0]["callback_data"].split(":")[1]), 6)
+for i in range(G.GIVE):
+    g.q("INSERT OR IGNORE INTO gratings(rater, photo, value, friend, ts, day) VALUES(900,?,6,0,0,'x')", 99000 + i)
+msg(900, "/me")
+assert "ציון זמני" in api.texts(900)
+
 print("GLOW TESTS PASSED")
