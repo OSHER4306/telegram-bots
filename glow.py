@@ -66,6 +66,7 @@ T = {
         "full": "יש לך כבר {n} תמונות. כדי להעלות חדשה, מחק אחת: /delete",
         "rate_cap": "🔥 {i}/{n} — כמה תיתן/י?",
         "rate_free": "🔥 כמה תיתן/י?",
+        "sample": "🧪 תמונת דוגמה · ",
         "none": "😴 אין כרגע תמונות חדשות לדרג. נסה שוב עוד קצת — ושתף את הקישור שלך כדי שיגיעו עוד: /link",
         "slow": "לאט 🙂",
         "cap": "הגעת למקסימום הדירוגים להיום. נתראה מחר!",
@@ -116,6 +117,7 @@ T = {
         "full": "You already have {n} photos. Delete one to upload a new one: /delete",
         "rate_cap": "🔥 {i}/{n} — what's your rating?",
         "rate_free": "🔥 What's your rating?",
+        "sample": "🧪 Sample photo · ",
         "none": "😴 No new photos to rate right now. Try again soon — and share your link to bring more: /link",
         "slow": "Slow down 🙂",
         "cap": "You hit today's rating limit. See you tomorrow!",
@@ -156,9 +158,9 @@ class Glow:
         self.db = db
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
-        for col in ("seen INTEGER", "uname TEXT"):
+        for table, col in (("gusers", "seen INTEGER"), ("gusers", "uname TEXT"), ("gphotos", "sample TEXT")):
             try:
-                self.db.execute("ALTER TABLE gusers ADD COLUMN " + col)
+                self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col}")
             except sqlite3.OperationalError:
                 pass
         self.fresh = None
@@ -260,16 +262,23 @@ class Glow:
                          *args, u["year"] - AGE_SPAN, u["year"] + AGE_SPAN)
             if r:
                 return r
-        return self.one(base + "ORDER BY (SELECT COUNT(*) FROM gratings g WHERE g.photo=p.id), o.karma DESC, RANDOM() LIMIT 1", *args)
+        r = self.one(base + "ORDER BY (SELECT COUNT(*) FROM gratings g WHERE g.photo=p.id), o.karma DESC, RANDOM() LIMIT 1", *args)
+        if r:
+            return r
+        # no real photo left: labelled sample photos matching the preference (never part of anyone's score)
+        return self.one("SELECT p.id, p.file, p.owner FROM gphotos p WHERE p.status='live' AND p.sample IN (%s) "
+                        "AND NOT EXISTS (SELECT 1 FROM gratings r WHERE r.rater=? AND r.photo=p.id) ORDER BY RANDOM() LIMIT 1"
+                        % ",".join("?" * len(genders)), *genders, u["id"])
 
     def rate_kb(self, u, photo):
         row1 = [{"text": str(i), "callback_data": f"r:{photo}:{i}"} for i in range(1, 6)]
         row2 = [{"text": str(i), "callback_data": f"r:{photo}:{i}"} for i in range(6, 11)]
         return {"inline_keyboard": [row1, row2, [{"text": self.t(u, "report"), "callback_data": f"rep:{photo}"}]]}
 
-    def caption(self, u):
+    def caption(self, u, p=None):
         n = self.rated(u["id"])
-        return self.t(u, "rate_cap", i=n + 1, n=GIVE) if n < GIVE else self.t(u, "rate_free")
+        c = self.t(u, "rate_cap", i=n + 1, n=GIVE) if n < GIVE else self.t(u, "rate_free")
+        return (self.t(u, "sample") + c) if p is not None and p["owner"] == 0 else c
 
     def show_next(self, u, edit=None):
         p = self.next_photo(u)
@@ -281,11 +290,11 @@ class Glow:
             return
         if edit:
             r = self.api.call("editMessageMedia", chat_id=u["id"], message_id=edit,
-                              media={"type": "photo", "media": p["file"], "caption": self.caption(u)},
+                              media={"type": "photo", "media": p["file"], "caption": self.caption(u, p)},
                               reply_markup=self.rate_kb(u, p["id"]))
             if r:
                 return
-        m = self.api.call("sendPhoto", chat_id=u["id"], photo=p["file"], caption=self.caption(u),
+        m = self.api.call("sendPhoto", chat_id=u["id"], photo=p["file"], caption=self.caption(u, p),
                           reply_markup=self.rate_kb(u, p["id"]), protect_content=True)
         if m:
             self.q("UPDATE gusers SET msg=? WHERE id=?", m.get("message_id"), u["id"])
@@ -305,6 +314,8 @@ class Glow:
 
     def after_rating(self, photo):
         p = self.one("SELECT * FROM gphotos WHERE id=?", photo)
+        if not p or p["owner"] == 0:
+            return
         s, n = self.score(photo)
         if s is None or n - p["notified"] < (MIN_SCORE if p["notified"] == 0 else 10):
             return
@@ -334,6 +345,10 @@ class Glow:
             return self.on_command(u, m, text)
         if u["state"] == "year" and text:
             return self.on_year(u, text)
+        cap = (m.get("caption") or "").strip().lower().split()
+        if "photo" in m and u["id"] == self.owner and len(cap) == 2 and cap[0] in ("sample", "דוגמה") and cap[1] in ("m", "f"):
+            pid = self.add_sample(cap[1], max(m["photo"], key=lambda x: x.get("width", 0) * x.get("height", 0))["file_id"])
+            return self.send(self.owner, f"✅ תמונת דוגמה #{pid} נוספה")
         if "photo" in m:
             return self.on_photo(u, m)
         if "video_note" in m:
@@ -361,7 +376,7 @@ class Glow:
             if u["state"] == "terms":
                 return self.ask_terms(u)
             return self.show_next(self.user(m["from"])) if u["state"] == "ready" else self.resume(u)
-        if u["id"] == self.owner and cmd in ("stats", "users", "u", "feed"):
+        if u["id"] == self.owner and cmd in ("stats", "users", "u", "feed", "sample", "samples"):
             return self.admin(cmd, arg.strip())
         if u["state"] != "ready" and cmd not in ("delete", "lang", "help"):
             return self.resume(u)
@@ -513,11 +528,36 @@ class Glow:
             on = (self.one("SELECT v FROM gmeta WHERE k='feed'") or ["on"])[0] != "on"
             self.q("INSERT OR REPLACE INTO gmeta(k, v) VALUES('feed', ?)", "on" if on else "off")
             return self.send(self.owner, "🔔 התראות חיות: " + ("פועלות" if on else "כבויות"))
+        if cmd in ("sample", "samples"):
+            return self.sample_cmd(arg)
         if cmd == "users":
             return self.users(int(arg) if arg.isdigit() else 15)
         if cmd == "u":
             return self.user_card(int(arg) if arg.lstrip("-").isdigit() else 0)
         return self.stats()
+
+    def add_sample(self, gender, file):
+        self.q("INSERT INTO gphotos(owner, file, status, created, sample) VALUES(0,?,'live',?,?)", file, int(self.now()), gender)
+        return self.one("SELECT last_insert_rowid()")[0]
+
+    def sample_cmd(self, arg):
+        parts = arg.split()
+        if len(parts) >= 2 and parts[0] in ("m", "f") and parts[1].startswith("http"):
+            m = self.api.call("sendPhoto", chat_id=self.owner, photo=parts[1], caption="🧪")
+            if not m:
+                return self.send(self.owner, "❌ לא הצלחתי לטעון את התמונה מהקישור.")
+            file = max(m["photo"], key=lambda x: x.get("width", 0) * x.get("height", 0))["file_id"] if m.get("photo") else parts[1]
+            pid = self.add_sample(parts[0], file)
+            return self.send(self.owner, f"✅ תמונת דוגמה #{pid} נוספה ({'גבר' if parts[0] == 'm' else 'אישה'})")
+        if len(parts) == 2 and parts[0] == "del" and parts[1].isdigit():
+            self.q("UPDATE gphotos SET status='rejected' WHERE id=? AND owner=0", int(parts[1]))
+            return self.send(self.owner, f"🗑 תמונת דוגמה #{parts[1]} הוסרה")
+        rows = self.db.execute("SELECT sample, COUNT(*) FROM gphotos WHERE owner=0 AND status='live' GROUP BY sample").fetchall()
+        have = " · ".join(f"{'גברים' if g == 'm' else 'נשים'} {n}" for g, n in rows) or "אין"
+        self.send(self.owner, f"🧪 תמונות דוגמה פעילות: {have}\n"
+                              "הוספה: שלח תמונה עם הכיתוב sample m או sample f, או /sample m &lt;קישור&gt;\n"
+                              "הסרה: /sample del &lt;מספר&gt;\n"
+                              "הן מוצגות רק כשאין תמונות אמיתיות, מסומנות כדוגמה, ולא נכנסות לציון של אף אחד.")
 
     def stats(self):
         c = lambda sql, *a: self.one(sql, *a)[0]
@@ -529,10 +569,11 @@ class Glow:
         minors = c("SELECT COUNT(*) FROM gusers WHERE blocked=1")
         refs = c("SELECT COUNT(*) FROM gusers WHERE ref IS NOT NULL")
         st = dict(self.db.execute("SELECT state, COUNT(*) FROM gusers WHERE blocked=0 AND name IS NOT NULL GROUP BY state").fetchall())
-        up = c("SELECT COUNT(DISTINCT owner) FROM gphotos WHERE status<>'new'")
+        up = c("SELECT COUNT(DISTINCT owner) FROM gphotos WHERE status<>'new' AND owner<>0")
         raters = c("SELECT COUNT(DISTINCT rater) FROM gratings")
         unlocked = c("SELECT COUNT(*) FROM (SELECT rater FROM gratings GROUP BY rater HAVING COUNT(*)>=?)", GIVE)
-        ph = dict(self.db.execute("SELECT status, COUNT(*) FROM gphotos GROUP BY status").fetchall())
+        ph = dict(self.db.execute("SELECT status, COUNT(*) FROM gphotos WHERE owner<>0 GROUP BY status").fetchall())
+        smp = c("SELECT COUNT(*) FROM gphotos WHERE owner=0 AND status='live'")
         r24 = c("SELECT COUNT(*) FROM gratings WHERE ts>?", now - 86400)
         rall = c("SELECT COUNT(*) FROM gratings")
         avg = self.one("SELECT AVG(value) FROM gratings")[0]
@@ -549,7 +590,7 @@ class Glow:
             "",
             f"📸 תמונות: בדירוג {ph.get('live', 0)} · ממתינות לאישור שלך {ph.get('pending', 0)} · מוסתרות {ph.get('hidden', 0)} · נדחו {ph.get('rejected', 0)}",
             f"⭐ דירוגים: 24ש׳ {r24} · סה״כ {rall} · ממוצע {avg:.1f}" if avg else f"⭐ דירוגים: 24ש׳ {r24} · סה״כ {rall}",
-            f"🚩 דיווחים: {reps}",
+            f"🚩 דיווחים: {reps} · 🧪 תמונות דוגמה: {smp} (/samples)",
             "",
             "/users — אחרונים · /u &lt;id&gt; — משתמש · /feed — התראות חיות",
         ]
@@ -648,7 +689,7 @@ class Glow:
         if not p or p["owner"] == u["id"]:
             answer()
             return self.show_next(u, edit=msg)
-        friend = 1 if u["ref"] == p["owner"] else 0
+        friend = 1 if p["owner"] and u["ref"] == p["owner"] else 0
         cur = self.q("INSERT OR IGNORE INTO gratings(rater, photo, value, friend, ts, day) VALUES(?,?,?,?,?,?)",
                      u["id"], pid, v, friend, int(now), self.day())
         answer()
@@ -719,7 +760,7 @@ def run(token, db_path, owner):
         ("card", "Share card / כרטיס"), ("lang", "Language / שפה"), ("delete", "Delete my data / מחיקה"))])
     try:
         api.call("setMyCommands", scope={"type": "chat", "chat_id": owner}, commands=[{"command": c, "description": d} for c, d in (
-            ("stats", "📊 סטטיסטיקה"), ("users", "👥 משתמשים אחרונים"), ("feed", "🔔 התראות חיות"),
+            ("stats", "📊 סטטיסטיקה"), ("users", "👥 משתמשים אחרונים"), ("feed", "🔔 התראות חיות"), ("samples", "🧪 תמונות דוגמה"),
             ("rate", "לדרג"), ("me", "הציון שלי"), ("link", "הקישור שלי"))])
     except Exception as e:
         print("glow owner commands:", e)
