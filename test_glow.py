@@ -258,4 +258,31 @@ assert "תמונות דוגמה: 3" in api.texts(OWNER)
 msg(OWNER, "/sample del 1")
 assert g.one("SELECT status FROM gphotos WHERE id=1")["status"] == "rejected"
 
+# 16. rate me in the group: inline photo, anyone in the chat votes without joining, live average, no score impact
+nu = g.one("SELECT COUNT(*) FROM gusers")[0]
+g.handle({"inline_query": {"id": "q1", "from": frm(71), "query": ""}})
+res = [p for m, p in api.calls if m == "answerInlineQuery"][-1]
+assert res["results"] and res["results"][0]["photo_file_id"] == "real71" and "r_71" in str(res["results"][0]["reply_markup"])
+g.handle({"inline_query": {"id": "q2", "from": frm(999), "query": ""}})
+res = [p for m, p in api.calls if m == "answerInlineQuery"][-1]
+assert res["results"] == [] and res["button"]["start_parameter"] == "share"
+p71 = pid_of(71)
+def gvote(uid, v):
+    g.handle({"callback_query": {"id": str(next(cbid)), "from": frm(uid), "data": f"v:{p71}:{v}", "inline_message_id": "IM1"}})
+gvote(5001, 9); gvote(5002, 7); gvote(5002, 8); gvote(71, 10)
+assert g.one("SELECT COUNT(*) FROM gvotes WHERE photo=?", p71)[0] == 2
+assert g.one("SELECT COUNT(*) FROM gusers")[0] == nu  # voters are not signed up
+assert g.one("SELECT COUNT(*) FROM gratings WHERE photo=?", p71)[0] == 0  # never part of the real score
+edit = [p for m, p in api.calls if m == "editMessageCaption" and p.get("inline_message_id") == "IM1"][-1]
+assert "8.5" in edit["caption"] and "2" in edit["caption"]
+toast = [p for m, p in api.calls if m == "answerCallbackQuery"][-1]
+assert "שלך" in toast.get("text", "")
+for i in range(3):
+    gvote(5100 + i, 6)
+assert "החברים בקבוצה" in api.texts(71)
+msg(71, "/share")
+assert "switch_inline_query" in str(api.to(71)[-1][1])
+msg(OWNER, "/stats")
+assert "דירוג בקבוצות: 1 תמונות שותפו" in api.texts(OWNER)
+
 print("GLOW TESTS PASSED")
