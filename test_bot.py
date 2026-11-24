@@ -389,6 +389,7 @@ assert "מלחמת האוהדים" in w and "2 אוהדים" in w and "1 שרת�
 dg.guild_leave({"id": "g1"})
 assert dg.one("SELECT COUNT(*) FROM dguilds WHERE left_at IS NULL")[0] == 0
 assert "Add **Fan War**" in it("invite", "5003")["data"]["content"]
+assert "/hit" in it("help", "5003")["data"]["content"] and "איך משחקים" in it("help", "5003", locale="he")["data"]["content"]
 msg(priv(1), user(1), "/admin")
 assert "שחקנים: <b>2</b>" in api.last(1)["text"] and "מכות היום: <b>1</b>" in api.last(1)["text"]
 # owner stores a Discord token from private chat; message deleted; others cannot
