@@ -297,4 +297,21 @@ assert not g.one("SELECT 1 FROM gphotos WHERE file='after_stop' AND owner=0")
 msg(20, "/sample f"); msg(20, photo=[{"file_id": "intruder", "width": 800, "height": 800}])
 assert not g.one("SELECT 1 FROM gphotos WHERE file='intruder' AND owner=0")
 
+# 18. speed meter in /stats, and the kept-alive API retries once on a dropped connection
+g.perf.append((0.4, 1.2)); g.perf.append((0.6, 2.0))
+msg(OWNER, "/stats")
+assert "ממוצע 0.5" in api.texts(OWNER) and "מרגע השליחה" in api.texts(OWNER)
+class Boom:
+    def request(self, *a, **k): raise OSError("reset")
+class Ok:
+    def request(self, *a, **k): pass
+    def getresponse(self):
+        class R:
+            def read(self): return b'{"ok": true, "result": 7}'
+        return R()
+real = G.Api("T")
+seq = [Boom(), Ok()]
+real._conn = lambda key, timeout: seq.pop(0)
+assert real.call("sendMessage", chat_id=1, text="x") == 7 and real.slow
+
 print("GLOW TESTS PASSED")
