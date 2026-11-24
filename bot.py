@@ -447,6 +447,8 @@ class Bot(RaidMixin):
             return
         if cmd == "discord" and private and frm["id"] == self.owner:
             return self.discord_setup(msg, args)
+        if cmd == "glow" and private and frm["id"] == self.owner:
+            return self.glow_setup(msg, args)
         if cmd in ("dservers", "dban") and private and frm["id"] == self.owner:
             return self.discord_servers(cmd, args)
         if cmd == "start":
@@ -852,6 +854,24 @@ class Bot(RaidMixin):
         return self.send(self.owner, "🎮 <b>שרתי דיסקורד</b> (📣 = רשום למלחמת השרתים)\n" + ("\n".join(lines) or "אין עדיין") +
                          "\n\nלהסתיר שרת מהפרסום: /dban ואחריו המספר")
 
+    def glow_setup(self, msg, args):
+        try:  # the token should not stay visible in the chat
+            self.api.call("deleteMessage", chat_id=msg["chat"]["id"], message_id=msg.get("message_id"))
+        except Exception:
+            pass
+        if not args or ":" not in args[0] or len(args[0]) < 40:
+            return self.send(self.owner, "שלח: /glow ואחריו הטוקן של בוט Glow מ-BotFather")
+        self.q("INSERT INTO meta(k, v) VALUES('glow_token', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", args[0])
+        self.glow_start()
+        self.send(self.owner, "✨ Glow פועל! נסה אותו: https://t.me/GlowRateMeBot")
+
+    def glow_start(self):
+        row = self.one("SELECT v FROM meta WHERE k='glow_token'")
+        if not row or getattr(self, "glow_thread", None) or self.db_path == ":memory:":
+            return
+        import glow
+        self.glow_thread = glow.start_thread(row["v"], os.path.join(os.path.dirname(self.db_path), "glow.db"), self.owner)
+
     def discord_start(self):
         row = self.one("SELECT v FROM meta WHERE k='discord_token'")
         if not row or getattr(self, "discord_thread", None) or self.db_path == ":memory:":
@@ -870,6 +890,10 @@ class Bot(RaidMixin):
             self.discord_start()
         except Exception as e:
             print("discord start failed", e)
+        try:
+            self.glow_start()
+        except Exception as e:
+            print("glow start failed", e)
         while True:
             updates = self.api.call("getUpdates", offset=offset, timeout=50,
                                     allowed_updates=["message", "callback_query", "my_chat_member", "inline_query", "pre_checkout_query"])
