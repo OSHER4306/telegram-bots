@@ -447,6 +447,8 @@ class Bot(RaidMixin):
             return
         if cmd == "discord" and private and frm["id"] == self.owner:
             return self.discord_setup(msg, args)
+        if cmd in ("dservers", "dban") and private and frm["id"] == self.owner:
+            return self.discord_servers(cmd, args)
         if cmd == "start":
             return self.start_private(frm, args) if private else self.start_group(chat, frm, args)
         if cmd in ("table", "census"):
@@ -798,6 +800,24 @@ class Bot(RaidMixin):
         self.q("INSERT INTO meta(k, v) VALUES('discord_token', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", args[0])
         self.send(self.owner, "✅ הטוקן נשמר. מחבר את הבוט לדיסקורד…")
         self.discord_start()
+
+    def discord_servers(self, cmd, args):
+        """Owner: /dservers lists Discord servers in the Server War; /dban <id> hides one from the spotlight."""
+        try:
+            rows = self.db.execute("SELECT id, name, invite FROM dguilds WHERE left_at IS NULL ORDER BY joined DESC LIMIT 30").fetchall()
+        except Exception:
+            rows = []
+        ban = self.one("SELECT v FROM meta WHERE k='dban'")
+        ban = [b for b in (ban["v"] if ban else "").split(",") if b]
+        if cmd == "dban" and args:
+            gid = args[0]
+            ban = [b for b in ban if b != gid] if gid in ban else ban + [gid]
+            self.q("INSERT INTO meta(k, v) VALUES('dban', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", ",".join(ban))
+            return self.send(self.owner, f"{'🚫 הוסתר מהפרסום' if gid in ban else '✅ חזר לפרסום'}: <code>{html.escape(gid)}</code>")
+        lines = [f"{'🚫' if r['id'] in ban else ('📣' if r['invite'] else '▫️')} {html.escape(r['name'] or '?')} — <code>{r['id']}</code>"
+                 for r in rows]
+        return self.send(self.owner, "🎮 <b>שרתי דיסקורד</b> (📣 = רשום למלחמת השרתים)\n" + ("\n".join(lines) or "אין עדיין") +
+                         "\n\nלהסתיר שרת מהפרסום: /dban ואחריו המספר")
 
     def discord_start(self):
         row = self.one("SELECT v FROM meta WHERE k='discord_token'")
