@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS gvotes(photo INTEGER, voter INTEGER, value INTEGER, t
 """
 
 STATE_HE = {"terms": "לא אישר תנאים", "year": "שנת לידה", "gender": "בחירת מין", "pref": "בחירת העדפה",
-            "live": "חסר וידאו אימות", "ready": "פעיל"}
+            "live": "חסר וידאו אימות", "ready": "פעיל", "guest": "מדרג בלי תמונה"}
 
 T = {
     "he": {
@@ -70,6 +70,14 @@ T = {
         "rate_cap": "🔥 {i}/{n} — כמה תיתן/י?",
         "rate_free": "🔥 כמה תיתן/י?",
         "sample": "🧪 תמונת דוגמה · ",
+        "go": "🔥 מתחילים! לוחצים על מספר והתמונה הבאה מגיעה מיד.\n📸 רוצה לדעת מה הציון שלך? פשוט שלח סלפי בכל רגע.",
+        "rv_first": "↩️ נתת {v} · היית מהראשונים לדרג אותו/ה",
+        "rv": "↩️ נתת {v} · אחרים נתנו בממוצע {avg} ({n}) {tag}",
+        "rv_nice": "😇 נדיב", "rv_hard": "😈 קשוח", "rv_same": "🎯 בול",
+        "two_q": "📸 קיבלתי! עוד 2 שאלות קצרות והתמונה יוצאת לדירוג:",
+        "me_prov": "📈 תמונה {i}: ציון זמני <b>{s}</b> ({n} דירוגים) · מתייצב ב-{m}",
+        "prov_ping": "📈 הדירוגים הראשונים הגיעו! ציון זמני: {s} · /me",
+        "kb_rate": "🔥 לדרג", "kb_me": "📊 הציון שלי", "kb_share": "📣 שתף",
         "inline_cap": "👀 כמה אתם נותנים לי? 1–10 · הדירוג אנונימי",
         "inline_live": "⭐ {avg} · {n} דירוגים מהקבוצה",
         "inline_join": "✨ מה זרים חושבים עליך? בדוק בחינם",
@@ -130,6 +138,14 @@ T = {
         "rate_cap": "🔥 {i}/{n} — what's your rating?",
         "rate_free": "🔥 What's your rating?",
         "sample": "🧪 Sample photo · ",
+        "go": "🔥 Let's go! Tap a number and the next photo comes right away.\n📸 Want your own score? Just send a selfie anytime.",
+        "rv_first": "↩️ You gave {v} · you're one of the first to rate them",
+        "rv": "↩️ You gave {v} · others gave {avg} on average ({n}) {tag}",
+        "rv_nice": "😇 generous", "rv_hard": "😈 tough", "rv_same": "🎯 spot on",
+        "two_q": "📸 Got it! 2 quick questions and your photo goes live:",
+        "me_prov": "📈 Photo {i}: early score <b>{s}</b> ({n} ratings) · settles at {m}",
+        "prov_ping": "📈 Your first ratings are in! Early score: {s} · /me",
+        "kb_rate": "🔥 Rate", "kb_me": "📊 My score", "kb_share": "📣 Share",
         "inline_cap": "👀 How much would you give me? 1–10 · votes are anonymous",
         "inline_live": "⭐ {avg} · {n} votes from this chat",
         "inline_join": "✨ What do strangers think of you? Find out free",
@@ -179,7 +195,8 @@ class Glow:
         self.db = db
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
-        for table, col in (("gusers", "seen INTEGER"), ("gusers", "uname TEXT"), ("gphotos", "sample TEXT")):
+        for table, col in (("gusers", "seen INTEGER"), ("gusers", "uname TEXT"), ("gphotos", "sample TEXT"),
+                           ("gphotos", "prov INTEGER DEFAULT 0")):
             try:
                 self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col}")
             except sqlite3.OperationalError:
@@ -204,10 +221,12 @@ class Glow:
         lang = (u["lang"] if u else "en") or "en"
         return T.get(lang, T["en"])[key].format(**kw)
 
-    def send(self, chat, text, kb=None):
+    def send(self, chat, text, kb=None, reply=None):
         p = {"chat_id": chat, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}
         if kb:
             p["reply_markup"] = {"inline_keyboard": kb}
+        elif reply:
+            p["reply_markup"] = reply
         return self.api.call("sendMessage", **p)
 
     def link(self, uid):
@@ -235,6 +254,26 @@ class Glow:
             if math.sqrt(sum((v - m) ** 2 for v in vals) / len(vals)) < 0.5:
                 return 0.3  # always the same number: counts much less
         return 1.0
+
+    def menu(self, u):
+        return {"keyboard": [[{"text": self.t(u, "kb_rate")}, {"text": self.t(u, "kb_me")}], [{"text": self.t(u, "kb_share")}]],
+                "resize_keyboard": True, "is_persistent": True}
+
+    def prov_score(self, photo):
+        """Hot-or-Not style live score: shown from the 3rd stranger rating, pulled toward the prior until it settles."""
+        rows = self.db.execute("SELECT rater, value FROM gratings WHERE photo=? AND friend=0", (photo,)).fetchall()
+        if len(rows) < 3:
+            return None, len(rows)
+        ws = [(self.weight(r["rater"]), r["value"]) for r in rows]
+        return round((sum(w * v for w, v in ws) + PRIOR * PRIOR_W) / (sum(w for w, _ in ws) + PRIOR_W), 1), len(rows)
+
+    def reveal(self, u, pid, v):
+        """What Hot or Not showed after every vote: how your rating compares with everyone else's."""
+        avg, n = self.one("SELECT AVG(value), COUNT(*) FROM gratings WHERE photo=? AND rater<>?", pid, u["id"])
+        if not n:
+            return self.t(u, "rv_first", v=v)
+        tag = self.t(u, "rv_nice" if v >= avg + 1.5 else "rv_hard" if v <= avg - 1.5 else "rv_same")
+        return self.t(u, "rv", v=v, avg=round(avg, 1), n=n, tag=tag)
 
     def score(self, photo):
         rows = self.db.execute("SELECT rater, value FROM gratings WHERE photo=? AND friend=0", (photo,)).fetchall()
@@ -298,26 +337,28 @@ class Glow:
         row2 = [{"text": str(i), "callback_data": f"r:{photo}:{i}"} for i in range(6, 11)]
         return {"inline_keyboard": [row1, row2, [{"text": self.t(u, "report"), "callback_data": f"rep:{photo}"}]]}
 
-    def caption(self, u, p=None):
+    def caption(self, u, p=None, rv=None):
         n = self.rated(u["id"])
         c = self.t(u, "rate_cap", i=n + 1, n=GIVE) if n < GIVE else self.t(u, "rate_free")
-        return (self.t(u, "sample") + c) if p is not None and p["owner"] == 0 else c
+        c = (self.t(u, "sample") + c) if p is not None and p["owner"] == 0 else c
+        return f"{rv}\n\n{c}" if rv else c
 
-    def show_next(self, u, edit=None):
+    def show_next(self, u, edit=None, rv=None):
         p = self.next_photo(u)
         if not p:
             if edit:
-                self.api.call("editMessageCaption", chat_id=u["id"], message_id=edit, caption=self.t(u, "none"))
+                self.api.call("editMessageCaption", chat_id=u["id"], message_id=edit,
+                              caption=(f"{rv}\n\n" if rv else "") + self.t(u, "none"))
             else:
                 self.send(u["id"], self.t(u, "none"))
             return
         if edit:
             r = self.api.call("editMessageMedia", chat_id=u["id"], message_id=edit,
-                              media={"type": "photo", "media": p["file"], "caption": self.caption(u, p)},
+                              media={"type": "photo", "media": p["file"], "caption": self.caption(u, p, rv)},
                               reply_markup=self.rate_kb(u, p["id"]))
             if r:
                 return
-        m = self.api.call("sendPhoto", chat_id=u["id"], photo=p["file"], caption=self.caption(u, p),
+        m = self.api.call("sendPhoto", chat_id=u["id"], photo=p["file"], caption=self.caption(u, p, rv),
                           reply_markup=self.rate_kb(u, p["id"]), protect_content=True)
         if m:
             self.q("UPDATE gusers SET msg=? WHERE id=?", m.get("message_id"), u["id"])
@@ -339,6 +380,11 @@ class Glow:
         p = self.one("SELECT * FROM gphotos WHERE id=?", photo)
         if not p or p["owner"] == 0:
             return
+        ps, pn = self.prov_score(photo)
+        if ps is not None and not p["prov"] and pn < MIN_SCORE:
+            o = self.one("SELECT * FROM gusers WHERE id=?", p["owner"])
+            if o and self.notify(o["id"], self.t(o, "prov_ping", s=ps)):
+                self.q("UPDATE gphotos SET prov=1 WHERE id=?", photo)
         s, n = self.score(photo)
         if s is None or n - p["notified"] < (MIN_SCORE if p["notified"] == 0 else 10):
             return
@@ -368,6 +414,10 @@ class Glow:
         if u["blocked"]:
             return self.send(u["id"], self.t(u, "blocked"))
         text = (m.get("text") or "").strip()
+        for lang in ("he", "en"):
+            for key, cmd in (("kb_rate", "/rate"), ("kb_me", "/me"), ("kb_share", "/share")):
+                if text == T[lang][key]:
+                    text = cmd
         if text.startswith("/"):
             return self.on_command(u, m, text)
         if u["state"] == "year" and text:
@@ -407,7 +457,7 @@ class Glow:
             return self.show_next(self.user(m["from"])) if u["state"] == "ready" else self.resume(u)
         if u["id"] == self.owner and cmd in ("stats", "users", "u", "feed", "sample", "samples"):
             return self.admin(cmd, arg.strip())
-        if u["state"] != "ready" and cmd not in ("delete", "lang", "help"):
+        if u["state"] not in ("ready", "guest") and cmd not in ("delete", "lang", "help"):
             return self.resume(u)
         if cmd == "rate":
             return self.show_next(u)
@@ -429,6 +479,8 @@ class Glow:
 
     def resume(self, u):
         st = u["state"]
+        if st == "guest":
+            return self.show_next(u)
         if st == "terms":
             return self.ask_terms(u)
         if st == "year":
@@ -453,10 +505,18 @@ class Glow:
         if datetime.fromtimestamp(self.now(), TZ).year - int(text) < 18:
             self.q("UPDATE gusers SET blocked=1, year=? WHERE id=?", int(text), u["id"])
             return self.send(u["id"], self.t(u, "minor"))
-        self.q("UPDATE gusers SET year=?, state='gender' WHERE id=?", int(text), u["id"])
-        self.ask_gender(u)
+        self.q("UPDATE gusers SET year=?, state='guest' WHERE id=?", int(text), u["id"])
+        u = self.one("SELECT * FROM gusers WHERE id=?", u["id"])
+        self.send(u["id"], self.t(u, "go"), reply=self.menu(u))
+        self.show_next(u)
 
     def on_photo(self, u, m):
+        if u["state"] == "guest":
+            file = max(m["photo"], key=lambda p: p.get("width", 0) * p.get("height", 0))["file_id"]
+            self.q("DELETE FROM gphotos WHERE owner=? AND status='new'", u["id"])
+            self.q("INSERT INTO gphotos(owner, file, status, created) VALUES(?,?,'new',?)", u["id"], file, int(self.now()))
+            self.send(u["id"], self.t(u, "two_q"))
+            return self.ask_gender(u) if not u["gender"] else self.ask_pref(u)
         if u["state"] not in ("ready", "photo"):
             return self.resume(u)
         n = self.one("SELECT COUNT(*) FROM gphotos WHERE owner=? AND status IN ('live','pending','new','hidden')", u["id"])[0]
@@ -505,7 +565,9 @@ class Glow:
                 continue
             s, n = self.score(p["id"])
             if s is None:
-                lines.append(self.t(u, "me_wait", i=i, n=n, m=MIN_SCORE))
+                ps, _ = self.prov_score(p["id"])
+                lines.append(self.t(u, "me_prov", i=i, s=ps, n=n, m=MIN_SCORE) if ps is not None
+                             else self.t(u, "me_wait", i=i, n=n, m=MIN_SCORE))
                 continue
             pct = self.percentile(p["id"], u["gender"])
             line = self.t(u, "me_score", i=i, s=s, n=n, pct=self.t(u, "pct", p=pct) if pct else "")
@@ -742,19 +804,27 @@ class Glow:
             answer()
             self.q("UPDATE gusers SET state='year' WHERE id=?", u["id"])
             return self.send(u["id"], self.t(u, "year"))
-        if kind == "g" and rest in ("m", "f", "o") and u["state"] == "gender":
+        if kind == "g" and rest in ("m", "f", "o") and u["state"] in ("gender", "guest"):
             answer()
-            self.q("UPDATE gusers SET gender=?, state='pref' WHERE id=?", rest, u["id"])
+            self.q("UPDATE gusers SET gender=? WHERE id=?", rest, u["id"])
+            if u["state"] == "gender":
+                self.q("UPDATE gusers SET state='pref' WHERE id=?", u["id"])
             return self.ask_pref(u)
-        if kind == "p" and rest in ("m", "f", "a") and u["state"] == "pref":
+        if kind == "p" and rest in ("m", "f", "a") and u["state"] in ("pref", "guest") and \
+                (u["state"] == "pref" or self.one("SELECT gender FROM gusers WHERE id=?", u["id"])["gender"]):
             answer()
             self.q("UPDATE gusers SET pref=?, state='ready' WHERE id=?", rest, u["id"])
             u = self.one("SELECT * FROM gusers WHERE id=?", u["id"])
-            self.send(u["id"], self.t(u, "photo"))
+            if self.one("SELECT 1 FROM gphotos WHERE owner=? AND status='new'", u["id"]):
+                if u["live"]:
+                    return self.submit(u)
+                self.q("UPDATE gusers SET state='live' WHERE id=?", u["id"])
+                return self.send(u["id"], self.t(u, "live"))
+            self.send(u["id"], self.t(u, "photo"), reply=self.menu(u))
             if u["ref"]:
                 self.show_next(u)
             return
-        if kind == "r" and u["state"] == "ready":
+        if kind == "r" and u["state"] in ("ready", "guest"):
             return self.on_rate(u, rest, msg, answer)
         if kind == "rep":
             answer()
@@ -804,7 +874,8 @@ class Glow:
                     if r:
                         self.notify(r["id"], self.t(r, "ref_paid"))
             self.after_rating(pid)
-        self.show_next(self.one("SELECT * FROM gusers WHERE id=?", u["id"]), edit=msg)
+        rv = self.reveal(u, pid, v) if cur.rowcount else None
+        self.show_next(self.one("SELECT * FROM gusers WHERE id=?", u["id"]), edit=msg, rv=rv)
 
     def report(self, u, pid, reason):
         if reason not in ("minor", "fake", "nsfw", "other"):
