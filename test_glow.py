@@ -352,4 +352,14 @@ for i in range(G.GIVE):
 msg(900, "/me")
 assert "ציון זמני" in api.texts(900)
 
+# 20. who to see, right from the rating card; a ready-made "rate me" note for friends
+msg(905, "/start"); cb(905, "agree"); msg(905, "1992")
+cb(905, "f:f")
+assert g.one("SELECT pref FROM gusers WHERE id=905")["pref"] == "f"
+last = [p for m, p in api.calls if p.get("chat_id") == 905 and m in ("sendPhoto", "editMessageMedia")][-1]
+assert "• " in str(last["reply_markup"])
+msg(905, "/link")
+assert "t.me/share/url" in str(api.to(905)[-1][1]) and "r_905" in str(api.to(905)[-1][1])
+assert "t.me/share/url" in str([p for m, p in api.to(900) if "אושרה" in (p.get("text") or "")])
+
 print("GLOW TESTS PASSED")
