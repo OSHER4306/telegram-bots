@@ -380,6 +380,7 @@ before = dg.power("rma")
 assert "You're in" in it("team", "5001", club="rma")["data"]["content"]
 r = it("hit", "5001")
 assert "+10" in r["data"]["content"] and dg.power("rma") == before + 10
+assert "Streak: **1**" in r["data"]["content"] and "/duel" in r["data"]["content"]
 assert "client_id=999" in r["data"]["components"][0]["components"][0]["url"]
 assert "already hit" in it("hit", "5001")["data"]["content"] and dg.power("rma") == before + 10
 assert "נכנסת" in it("team", "5002", locale="he", club="Barcelona")["data"]["content"]
@@ -426,4 +427,7 @@ assert "all 5 duels" in duel("5001", "5002")["data"]["content"]
 assert "Pick your team" in duel("5009", "5001")["data"]["content"]
 dg.guild_join({"id": "g1", "name": "Renamed HQ", "member_count": 5})
 assert dg.one("SELECT name FROM dguilds WHERE id='g1'")["name"] == "Renamed HQ"
+# 32. streak counts consecutive days
+clock[0] += 86400
+assert "Streak: **2**" in it("hit", "5001")["data"]["content"]
 print("ALL TESTS PASSED")
