@@ -369,9 +369,11 @@ class Glow:
         if u["state"] == "year" and text:
             return self.on_year(u, text)
         cap = (m.get("caption") or "").strip().lower().split()
-        if "photo" in m and u["id"] == self.owner and len(cap) == 2 and cap[0] in ("sample", "דוגמה") and cap[1] in ("m", "f"):
-            pid = self.add_sample(cap[1], max(m["photo"], key=lambda x: x.get("width", 0) * x.get("height", 0))["file_id"])
-            return self.send(self.owner, f"✅ תמונת דוגמה #{pid} נוספה")
+        mode = (self.one("SELECT v FROM gmeta WHERE k='sample_mode'") or [""])[0] if u["id"] == self.owner else ""
+        if "photo" in m and u["id"] == self.owner and (mode in ("m", "f") or (len(cap) == 2 and cap[0] in ("sample", "דוגמה") and cap[1] in ("m", "f"))):
+            gender = cap[1] if len(cap) == 2 and cap[1] in ("m", "f") else mode
+            pid = self.add_sample(gender, max(m["photo"], key=lambda x: x.get("width", 0) * x.get("height", 0))["file_id"])
+            return self.send(self.owner, f"✅ תמונת דוגמה #{pid} נוספה ({'גבר' if gender == 'm' else 'אישה'})")
         if "photo" in m:
             return self.on_photo(u, m)
         if "video_note" in m:
@@ -621,13 +623,17 @@ class Glow:
             file = max(m["photo"], key=lambda x: x.get("width", 0) * x.get("height", 0))["file_id"] if m.get("photo") else parts[1]
             pid = self.add_sample(parts[0], file)
             return self.send(self.owner, f"✅ תמונת דוגמה #{pid} נוספה ({'גבר' if parts[0] == 'm' else 'אישה'})")
+        if len(parts) == 1 and parts[0] in ("m", "f", "stop"):
+            self.q("INSERT OR REPLACE INTO gmeta(k, v) VALUES('sample_mode', ?)", "" if parts[0] == "stop" else parts[0])
+            return self.send(self.owner, "🛑 מצב העלאת דוגמאות כבוי" if parts[0] == "stop" else
+                             f"📥 מצב העלאה: כל תמונה שתשלח עכשיו תיכנס כדוגמה ({'גברים' if parts[0] == 'm' else 'נשים'}). לסיום: /sample stop")
         if len(parts) == 2 and parts[0] == "del" and parts[1].isdigit():
             self.q("UPDATE gphotos SET status='rejected' WHERE id=? AND owner=0", int(parts[1]))
             return self.send(self.owner, f"🗑 תמונת דוגמה #{parts[1]} הוסרה")
         rows = self.db.execute("SELECT sample, COUNT(*) FROM gphotos WHERE owner=0 AND status='live' GROUP BY sample").fetchall()
         have = " · ".join(f"{'גברים' if g == 'm' else 'נשים'} {n}" for g, n in rows) or "אין"
         self.send(self.owner, f"🧪 תמונות דוגמה פעילות: {have}\n"
-                              "הוספה: שלח תמונה עם הכיתוב sample m או sample f, או /sample m &lt;קישור&gt;\n"
+                              "הוספה בכמות: /sample f או /sample m ואז שלח תמונות, לסיום /sample stop\n"
                               "הסרה: /sample del &lt;מספר&gt;\n"
                               "הן מוצגות רק כשאין תמונות אמיתיות, מסומנות כדוגמה, ולא נכנסות לציון של אף אחד.")
 
