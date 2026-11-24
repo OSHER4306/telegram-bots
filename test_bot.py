@@ -430,4 +430,41 @@ assert dg.one("SELECT name FROM dguilds WHERE id='g1'")["name"] == "Renamed HQ"
 # 32. streak counts consecutive days
 clock[0] += 86400
 assert "Streak: **2**" in it("hit", "5001")["data"]["content"]
+
+# 33. Server War: /promote (admins only), server rank on /hit, spotlight in /war, owner can hide a server
+def pr(uid_, link, perms="0", guild="g1", locale="en-US"):
+    return dg.handle({"type": 2, "id": "1", "token": "t", "guild_id": guild, "locale": locale,
+                      "member": {"user": {"id": uid_, "username": f"d{uid_}"}, "permissions": perms},
+                      "data": {"name": "promote", "options": [{"name": "invite", "value": link}]}})
+assert "Only server admins" in pr("5001", "https://discord.gg/abc")["data"]["content"]
+assert "doesn't look like" in pr("5001", "https://evil.com/x", perms="32")["data"]["content"]
+assert "Server War" in pr("5001", "discord.com/invite/Renamed1", perms="32")["data"]["content"]
+assert dg.one("SELECT invite FROM dguilds WHERE id='g1'")["invite"] == "https://discord.gg/Renamed1"
+assert "promote" in [c["name"] for c in DG.COMMANDS]
+r = it("hit", "5002")
+assert "Your server: **#1**" in r["data"]["content"]
+assert "https://discord.gg/Renamed1" in str(r["data"]["components"])
+w = it("war", "5003")["data"]["content"]
+assert "Server of the week:** Renamed HQ" in w and "discord.gg/Renamed1" in w
+# a second server that has more activity but no invite is ranked, yet the spotlight stays with a promoted one
+dg.guild_join({"id": "g2", "name": "Adults", "member_count": 50, "nsfw_level": 3})
+for u_ in ("6001", "6002", "6003", "6004"):
+    dg.handle({"type": 2, "id": "1", "token": "t", "guild_id": "g2", "locale": "en-US",
+               "member": {"user": {"id": u_, "username": "x"}}, "data": {"name": "team", "options": [{"name": "club", "value": "rma"}]}})
+    dg.handle({"type": 2, "id": "1", "token": "t", "guild_id": "g2", "locale": "en-US",
+               "member": {"user": {"id": u_, "username": "x"}}, "data": {"name": "hit", "options": []}})
+assert dg.board()[0]["id"] == "g2" and dg.spotlight()["id"] == "g1"
+pr("6001", "https://discord.gg/adults", perms="8", guild="g2")
+assert dg.spotlight()["id"] == "g1"  # adult-only servers are never advertised
+msg(priv(1), user(1), "/dservers")
+assert "Renamed HQ" in api.last(1)["text"] and "📣" in api.last(1)["text"]
+msg(priv(1), user(1), "/dban g1")
+assert dg.spotlight() is None and "הוסתר" in api.last(1)["text"]
+msg(priv(1), user(1), "/dban g1")
+assert dg.spotlight()["id"] == "g1"
+msg(priv(912), user(912), "/dban g1")
+assert dg.spotlight()["id"] == "g1"
+assert "מלחמת השרתים" in it("help", "5003", locale="he")["data"]["content"]
+dg.guild_join({"id": "g1", "name": "Renamed HQ"})  # GUILD_UPDATE has no member_count: keep the old number
+assert dg.one("SELECT members FROM dguilds WHERE id='g1'")["members"] == 5
 print("ALL TESTS PASSED")
