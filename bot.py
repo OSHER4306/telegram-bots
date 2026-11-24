@@ -183,7 +183,8 @@ def points(hg, ag, rh, ra):
 class Bot(RaidMixin):
     def __init__(self, api, db_path="derby.db", owner_id=0, now=time.time):
         self.api, self.owner, self.now = api, int(owner_id or 0), now
-        self.db = sqlite3.connect(db_path)
+        self.db_path = db_path
+        self.db = sqlite3.connect(db_path, timeout=30)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         self.raid_init()
@@ -444,6 +445,8 @@ class Bot(RaidMixin):
         private = chat["type"] == "private"
         if self.raid_cmd(cmd, chat, frm):
             return
+        if cmd == "discord" and private and frm["id"] == self.owner:
+            return self.discord_setup(msg, args)
         if cmd == "start":
             return self.start_private(frm, args) if private else self.start_group(chat, frm, args)
         if cmd in ("table", "census"):
@@ -784,9 +787,36 @@ class Bot(RaidMixin):
                                   p=c("SELECT COUNT(*) c FROM predictions")))
 
     # ---------- main loop ----------
+    # ---------- Discord: same world fan war, played with slash commands ----------
+    def discord_setup(self, msg, args):
+        try:  # the token should not stay visible in the chat
+            self.api.call("deleteMessage", chat_id=msg["chat"]["id"], message_id=msg.get("message_id"))
+        except Exception:
+            pass
+        if not args or len(args[0]) < 50:
+            return self.send(self.owner, "שלח: /discord ואחריו הטוקן של בוט הדיסקורד")
+        self.q("INSERT INTO meta(k, v) VALUES('discord_token', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", args[0])
+        self.send(self.owner, "✅ הטוקן נשמר. מחבר את הבוט לדיסקורד…")
+        self.discord_start()
+
+    def discord_start(self):
+        row = self.one("SELECT v FROM meta WHERE k='discord_token'")
+        if not row or getattr(self, "discord_thread", None) or self.db_path == ":memory:":
+            return
+        import discord_game
+
+        def ready(url, name):
+            self.send(self.owner, f"🎮 הבוט <b>{html.escape(name)}</b> מחובר לדיסקורד!\n"
+                                  f"קישור הוספה לשרתים:\n{url}")
+        self.discord_thread = discord_game.start_thread(row["v"], self.db_path, DATA, ready)
+
     def run(self):
         offset = 0
         print(f"Derby running as @{self.username}")
+        try:
+            self.discord_start()
+        except Exception as e:
+            print("discord start failed", e)
         while True:
             updates = self.api.call("getUpdates", offset=offset, timeout=50,
                                     allowed_updates=["message", "callback_query", "my_chat_member", "inline_query", "pre_checkout_query"])
