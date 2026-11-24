@@ -285,4 +285,16 @@ assert "switch_inline_query" in str(api.to(71)[-1][1])
 msg(OWNER, "/stats")
 assert "דירוג בקבוצות: 1 תמונות שותפו" in api.texts(OWNER)
 
+# 17. bulk sample upload mode for the owner
+n0 = g.one("SELECT COUNT(*) FROM gphotos WHERE owner=0 AND sample='m'")[0]
+msg(OWNER, "/sample m")
+for i in range(3):
+    msg(OWNER, photo=[{"file_id": f"bulk{i}", "width": 800, "height": 800}])
+msg(OWNER, "/sample stop")
+msg(OWNER, photo=[{"file_id": "after_stop", "width": 800, "height": 800}])
+assert g.one("SELECT COUNT(*) FROM gphotos WHERE owner=0 AND sample='m'")[0] == n0 + 3
+assert not g.one("SELECT 1 FROM gphotos WHERE file='after_stop' AND owner=0")
+msg(20, "/sample f"); msg(20, photo=[{"file_id": "intruder", "width": 800, "height": 800}])
+assert not g.one("SELECT 1 FROM gphotos WHERE file='intruder' AND owner=0")
+
 print("GLOW TESTS PASSED")
