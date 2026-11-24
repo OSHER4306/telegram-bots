@@ -49,6 +49,7 @@ T = {
         "servers": "\n\n🏟️ **Top servers this week**\n{rows}",
         "invite": "Add **Fan War** to any server in one click — the whole server joins the world war:",
         "add": "➕ Add to your server",
+        "me": "🎮 Play anywhere",
         "tg": "📱 Play on Telegram too",
         "hq": "⚔️ Join Fan War HQ",
         "duel_self": "You can't duel yourself 😅 Tag a rival fan: **/duel @friend**",
@@ -85,6 +86,7 @@ T = {
         "war": "🌍 **מלחמת האוהדים העולמית** — טבלה חיה\n{rows}{servers}\n\n🎮 {players} אוהדים | 🏟️ {guilds} שרתי דיסקורד + טלגרם\nבחר צד: **/team**, ואז **/hit** כל יום.",
         "invite": "הוסף את **מלחמת האוהדים** לכל שרת בלחיצה אחת — כל השרת נכנס למלחמה העולמית:",
         "add": "➕ הוסף לשרת שלך",
+        "me": "🎮 לשחק בכל מקום",
         "tg": "📱 לשחק גם בטלגרם",
         "hq": "⚔️ לשרת של מלחמת האוהדים",
         "duel_self": "אי אפשר להתמודד מול עצמך 😅 תייג אוהד יריב: **/duel @חבר**",
@@ -181,6 +183,9 @@ class DiscordGame:
         return (f"https://discord.com/oauth2/authorize?client_id={self.app_id}"
                 "&scope=bot+applications.commands&permissions=0")
 
+    def user_install_url(self):
+        return f"https://discord.com/oauth2/authorize?client_id={self.app_id}&integration_type=1&scope=applications.commands"
+
     def week(self):
         return datetime.fromtimestamp(self.now() - 7 * 86400 + 3 * 3600, TZ).strftime("%Y-%m-%d")
 
@@ -208,6 +213,7 @@ class DiscordGame:
                {"type": 2, "style": 5, "label": T[lang]["tg"], "url": self.tg_link + "?start=dc"}]
         if self.app_id:
             row.insert(0, {"type": 2, "style": 5, "label": T[lang]["add"], "url": self.invite_url()})
+            row.insert(1, {"type": 2, "style": 5, "label": T[lang]["me"], "url": self.user_install_url()})
         if spot:
             row.append({"type": 2, "style": 5, "label": T[lang]["spot_btn"], "url": spot["invite"]})
         return [{"type": 1, "components": row}]
@@ -484,7 +490,8 @@ def run_discord(token, db_path, data, on_ready=None, tg_link="https://t.me/Derby
             time.sleep(60)
     app_id = me["id"]
     game = DiscordGame(sqlite3.connect(db_path, timeout=30), data, app_id, tg_link)
-    rest("PUT", f"/applications/{app_id}/commands", token, COMMANDS)
+    if rest("PUT", f"/applications/{app_id}/commands", token, commands()) is None:
+        rest("PUT", f"/applications/{app_id}/commands", token, COMMANDS)  # user install not enabled yet
     if on_ready:
         on_ready(game.invite_url(), me.get("name", "bot"))
     while True:
@@ -531,6 +538,20 @@ def run_discord(token, db_path, data, on_ready=None, tg_link="https://t.me/Derby
             if ws:
                 ws.close()
         time.sleep(5)
+
+
+def commands():
+    """Every command except /promote also works when a player installs Fan War on their own account
+    (integration type 1), so anyone can play in any server or DM without an admin adding the bot."""
+    out = []
+    for c in COMMANDS:
+        c = dict(c)
+        if c["name"] == "promote":
+            c["integration_types"], c["contexts"] = [0], [0]
+        else:
+            c["integration_types"], c["contexts"] = [0, 1], [0, 1, 2]
+        out.append(c)
+    return out
 
 
 def start_thread(token, db_path, data, on_ready=None):
