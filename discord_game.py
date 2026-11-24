@@ -37,7 +37,8 @@ T = {
         "behind": "⚠️ Your rivals lead by {d}. Call your friends!",
         "tie": "⚖️ Dead even with your rivals!",
         "done": "✅ You already hit for **{c}** today. Next hit: tomorrow (21:00 Israel time reset).\nType **/war** to see the world table.",
-        "war": "🌍 **World Fan War** — live table\n{rows}\n\n🎮 {players} fans | 🏟️ {guilds} Discord servers + Telegram\nPick a side: **/team**, then **/hit** every day.",
+        "war": "🌍 **World Fan War** — live table\n{rows}{servers}\n\n🎮 {players} fans | 🏟️ {guilds} Discord servers + Telegram\nPick a side: **/team**, then **/hit** every day.",
+        "servers": "\n\n🏟️ **Top servers this week**\n{rows}",
         "invite": "Add **Fan War** to any server in one click — the whole server joins the world war:",
         "add": "➕ Add to your server",
         "tg": "📱 Play on Telegram too",
@@ -52,7 +53,8 @@ T = {
         "behind": "⚠️ היריבה מובילה ב-{d}. תקרא לחברים!",
         "tie": "⚖️ שוויון מוחלט מול היריבה!",
         "done": "✅ כבר הכית היום בשביל **{c}**. המכה הבאה: מחר (מתאפס ב-21:00).\nכתוב **/war** לטבלה העולמית.",
-        "war": "🌍 **מלחמת האוהדים העולמית** — טבלה חיה\n{rows}\n\n🎮 {players} אוהדים | 🏟️ {guilds} שרתי דיסקורד + טלגרם\nבחר צד: **/team**, ואז **/hit** כל יום.",
+        "servers": "\n\n🏟️ **השרתים המובילים השבוע**\n{rows}",
+        "war": "🌍 **מלחמת האוהדים העולמית** — טבלה חיה\n{rows}{servers}\n\n🎮 {players} אוהדים | 🏟️ {guilds} שרתי דיסקורד + טלגרם\nבחר צד: **/team**, ואז **/hit** כל יום.",
         "invite": "הוסף את **מלחמת האוהדים** לכל שרת בלחיצה אחת — כל השרת נכנס למלחמה העולמית:",
         "add": "➕ הוסף לשרת שלך",
         "tg": "📱 לשחק גם בטלגרם",
@@ -179,8 +181,13 @@ class DiscordGame:
             medals = ["🥇", "🥈", "🥉"]
             body = "\n".join(f"{medals[i] if i < 3 else f'{i + 1}.'} {self.name(r['club'], lang)} — **{r['power']}**"
                              for i, r in enumerate(rows)) or "—"
+            week = datetime.fromtimestamp(self.now() - 7 * 86400 + 3 * 3600, TZ).strftime("%Y-%m-%d")
+            top = self.db.execute("SELECT g.name, COUNT(*) n FROM dhits h JOIN dguilds g ON g.id=h.guild "
+                                  "WHERE h.day>=? GROUP BY h.guild ORDER BY n DESC LIMIT 5", (week,)).fetchall()
+            servers = T[lang]["servers"].format(rows="\n".join(
+                f"{i}. {r['name'][:40]} — {r['n'] * 10}" for i, r in enumerate(top, 1))) if top else ""
             return self.reply(T[lang]["war"].format(
-                rows=body, players=self.one("SELECT COUNT(*) FROM dusers")[0],
+                rows=body, servers=servers, players=self.one("SELECT COUNT(*) FROM dusers")[0],
                 guilds=self.one("SELECT COUNT(*) FROM dguilds WHERE left_at IS NULL")[0]), lang)
         if cmd == "invite":
             return self.reply(T[lang]["invite"], lang)
