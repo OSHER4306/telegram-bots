@@ -14,6 +14,7 @@ import sqlite3
 import threading
 import time
 import http.client
+import urllib.parse
 import urllib.request
 from collections import deque
 from datetime import datetime
@@ -78,6 +79,9 @@ T = {
         "me_prov": "📈 תמונה {i}: ציון זמני <b>{s}</b> ({n} דירוגים) · מתייצב ב-{m}",
         "prov_ping": "📈 הדירוגים הראשונים הגיעו! ציון זמני: {s} · /me",
         "kb_rate": "🔥 לדרג", "kb_me": "📊 הציון שלי", "kb_share": "📣 שתף",
+        "f_f": "👩 נשים", "f_m": "👨 גברים", "f_a": "🌈 כולם",
+        "send_friends": "💌 שלח לחברים: \"דרגו אותי\"",
+        "share_text": "בניתי לעצמי פרופיל בגלואו 🙈 תדרגו אותי 1–10, ותהיו נחמדים 😅",
         "inline_cap": "👀 כמה אתם נותנים לי? 1–10 · הדירוג אנונימי",
         "inline_live": "⭐ {avg} · {n} דירוגים מהקבוצה",
         "inline_join": "✨ מה זרים חושבים עליך? בדוק בחינם",
@@ -146,6 +150,9 @@ T = {
         "me_prov": "📈 Photo {i}: early score <b>{s}</b> ({n} ratings) · settles at {m}",
         "prov_ping": "📈 Your first ratings are in! Early score: {s} · /me",
         "kb_rate": "🔥 Rate", "kb_me": "📊 My score", "kb_share": "📣 Share",
+        "f_f": "👩 Women", "f_m": "👨 Men", "f_a": "🌈 Everyone",
+        "send_friends": "💌 Send to friends: \"rate me\"",
+        "share_text": "I'm on Glow 🙈 rate me 1–10, and be nice 😅",
         "inline_cap": "👀 How much would you give me? 1–10 · votes are anonymous",
         "inline_live": "⭐ {avg} · {n} votes from this chat",
         "inline_join": "✨ What do strangers think of you? Find out free",
@@ -335,7 +342,14 @@ class Glow:
     def rate_kb(self, u, photo):
         row1 = [{"text": str(i), "callback_data": f"r:{photo}:{i}"} for i in range(1, 6)]
         row2 = [{"text": str(i), "callback_data": f"r:{photo}:{i}"} for i in range(6, 11)]
-        return {"inline_keyboard": [row1, row2, [{"text": self.t(u, "report"), "callback_data": f"rep:{photo}"}]]}
+        pref = u["pref"] or "a"
+        row3 = [{"text": ("• " if pref == k else "") + self.t(u, "f_" + k), "callback_data": f"f:{k}"} for k in ("f", "m", "a")]
+        return {"inline_keyboard": [row1, row2, row3 + [{"text": self.t(u, "report"), "callback_data": f"rep:{photo}"}]]}
+
+    def friends_btn(self, u):
+        """Hot or Not's launch: a short note to friends with a link straight to your photo, "be nice when you vote"."""
+        url = "https://t.me/share/url?" + urllib.parse.urlencode({"url": self.link(u["id"]), "text": self.t(u, "share_text")})
+        return [{"text": self.t(u, "send_friends"), "url": url}]
 
     def caption(self, u, p=None, rv=None):
         n = self.rated(u["id"])
@@ -466,7 +480,7 @@ class Glow:
         if cmd == "share":
             return self.send(u["id"], self.t(u, "share_how", bot=self.username), self.share_kb(u))
         if cmd == "link":
-            return self.send(u["id"], self.t(u, "link", url=self.link(u["id"])))
+            return self.send(u["id"], self.t(u, "link", url=self.link(u["id"])), [self.friends_btn(u)])
         if cmd == "card":
             return self.card(u)
         if cmd == "lang":
@@ -824,6 +838,10 @@ class Glow:
             if u["ref"]:
                 self.show_next(u)
             return
+        if kind == "f" and rest in ("m", "f", "a") and u["state"] in ("ready", "guest"):
+            answer()
+            self.q("UPDATE gusers SET pref=? WHERE id=?", rest, u["id"])
+            return self.show_next(self.one("SELECT * FROM gusers WHERE id=?", u["id"]), edit=msg)
         if kind == "r" and u["state"] in ("ready", "guest"):
             return self.on_rate(u, rest, msg, answer)
         if kind == "rep":
@@ -898,7 +916,7 @@ class Glow:
         self.q("UPDATE gphotos SET status=? WHERE id=?", "live" if ok else "rejected", pid)
         answer("✅ אושרה" if ok else "❌ נדחתה")
         if o:
-            self.send(o["id"], self.t(o, "approved" if ok else "rejected"), self.share_kb(o) if ok else None)
+            self.send(o["id"], self.t(o, "approved" if ok else "rejected"), [self.friends_btn(o)] + self.share_kb(o) if ok else None)
 
 
 # ---------- network ----------
