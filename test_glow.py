@@ -220,4 +220,42 @@ for pid in [pid_of(u) for u in range(21, 32)]:
     rate(60, pid, 10)
 assert g.weight(60) == 0.3 and g.weight(25) == 1.0
 
+# 15. sample photos: owner-only, labelled, matched to preference, count toward unlocking, never scored
+class PhotoApi(FakeApi):
+    def call(self, method, **p):
+        r = super().call(method, **p)
+        if method == "sendPhoto" and str(p.get("photo", "")).startswith("http"):
+            r["photo"] = [{"file_id": "small", "width": 90, "height": 90}, {"file_id": "big_" + p["photo"][-1], "width": 900, "height": 900}]
+        return r
+api2 = PhotoApi()
+g2 = G.Glow(api2, sqlite3.connect(":memory:"), OWNER, "GlowTestBot", now=lambda: clock[0])
+g, api = g2, api2
+msg(OWNER, "/sample f https://x/1")
+msg(OWNER, "/sample m https://x/2")
+msg(OWNER, caption="sample f", photo=[{"file_id": "own_f", "width": 800, "height": 800}])
+msg(20, "/sample f https://x/9")
+assert g.one("SELECT COUNT(*) FROM gphotos WHERE owner=0 AND status='live'")[0] == 3
+assert g.one("SELECT file FROM gphotos WHERE id=1")["file"] == "big_1"
+msg(OWNER, "/samples")
+assert "נשים 2" in api.texts(OWNER) and "גברים 1" in api.texts(OWNER)
+onboard(70, pref="f"); msg(70, "/rate")
+shown = [p for m, p in api.to(70) if m == "sendPhoto"]
+assert shown and "דוגמה" in shown[-1]["caption"] and shown[-1]["photo"] in ("big_1", "own_f")
+for _ in range(3):
+    last = [p for m, p in api.calls if p.get("chat_id") == 70 and m in ("sendPhoto", "editMessageMedia")][-1]
+    pid = int((last.get("reply_markup") or {"inline_keyboard": [[{"callback_data": "r:0:1"}]]})["inline_keyboard"][0][0]["callback_data"].split(":")[1])
+    if pid:
+        rate(70, pid, 8)
+assert g.rated(70) == 2  # both women samples, never the man
+assert g.one("SELECT COUNT(*) FROM gratings r JOIN gphotos p ON p.id=r.photo WHERE r.rater=70 AND p.sample='m'")[0] == 0
+onboard(71, gender="f", pref="a"); msg(71, photo=[{"file_id": "real71", "width": 500, "height": 500}])
+msg(71, video_note={"file_id": "v71"}); cb(OWNER, f"ok:{pid_of(71)}")
+onboard(72, pref="a"); msg(72, "/rate")
+first = [p for m, p in api.to(72) if m == "sendPhoto"][0]
+assert first["photo"] == "real71" and "דוגמה" not in first["caption"]  # real people come before samples
+msg(OWNER, "/stats")
+assert "תמונות דוגמה: 3" in api.texts(OWNER)
+msg(OWNER, "/sample del 1")
+assert g.one("SELECT status FROM gphotos WHERE id=1")["status"] == "rejected"
+
 print("GLOW TESTS PASSED")
