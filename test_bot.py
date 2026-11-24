@@ -386,6 +386,7 @@ assert "נכנסת" in it("team", "5002", locale="he", club="Barcelona")["data"]
 dg.guild_join({"id": "g1", "name": "Madridistas", "member_count": 500})
 w = it("war", "5002", locale="he")["data"]["content"]
 assert "מלחמת האוהדים" in w and "2 אוהדים" in w and "1 שרתי" in w
+assert "השרתים המובילים" in w and "Madridistas — 10" in w
 dg.guild_leave({"id": "g1"})
 assert dg.one("SELECT COUNT(*) FROM dguilds WHERE left_at IS NULL")[0] == 0
 assert "Add **Fan War**" in it("invite", "5003")["data"]["content"]
