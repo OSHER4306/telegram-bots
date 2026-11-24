@@ -41,6 +41,7 @@ T = {
         "invite": "Add **Fan War** to any server in one click — the whole server joins the world war:",
         "add": "➕ Add to your server",
         "tg": "📱 Play on Telegram too",
+        "help": "⚽ **Fan War — how to play**\n**/team** — pick your club\n**/hit** — +10 points for your club, once a day\n**/war** — the live world table\n**/invite** — add Fan War to another server\n\nFans on Discord and Telegram fight in the same war. Free, no ads, needs no permissions.",
     },
     "he": {
         "need_team": "⚽ קודם בחר קבוצה: כתוב **/team** ובחר את הקבוצה שלך.",
@@ -55,6 +56,7 @@ T = {
         "invite": "הוסף את **מלחמת האוהדים** לכל שרת בלחיצה אחת — כל השרת נכנס למלחמה העולמית:",
         "add": "➕ הוסף לשרת שלך",
         "tg": "📱 לשחק גם בטלגרם",
+        "help": "⚽ **מלחמת האוהדים — איך משחקים**\n**/team** — בחר קבוצה\n**/hit** — +10 נקודות לקבוצה שלך, פעם ביום\n**/war** — הטבלה העולמית החיה\n**/invite** — הוסף את המשחק לשרת אחר\n\nאוהדים בדיסקורד ובטלגרם נלחמים באותה מלחמה. חינם, בלי פרסומות.",
     },
 }
 
@@ -66,6 +68,8 @@ COMMANDS = [
      "description_localizations": {"he": "הוסף את ה-+10 היומי לקבוצה שלך"}},
     {"name": "war", "description": "World Fan War live table",
      "description_localizations": {"he": "הטבלה החיה של מלחמת האוהדים"}},
+    {"name": "help", "description": "How to play Fan War",
+     "description_localizations": {"he": "איך משחקים"}},
     {"name": "invite", "description": "Add Fan War to another server",
      "description_localizations": {"he": "הוסף את המשחק לשרת אחר"}},
 ]
@@ -180,6 +184,8 @@ class DiscordGame:
                 guilds=self.one("SELECT COUNT(*) FROM dguilds WHERE left_at IS NULL")[0]), lang)
         if cmd == "invite":
             return self.reply(T[lang]["invite"], lang)
+        if cmd == "help":
+            return self.reply(T[lang]["help"], lang)
         return self.reply(T[lang]["need_team"], lang, False)
 
     def guild_join(self, g):
