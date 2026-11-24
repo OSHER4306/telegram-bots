@@ -349,6 +349,12 @@ class RaidMixin:
                        w=c["wins"], l=c["losses"], players=players, today=today, seen=c["seen"] or 0,
                        top=f"{html.escape(top['title'])} ({top['power']})" if top else "-")
 
+    def dcount(self, sql, *a):
+        try:
+            return self.one(sql, *a)[0]
+        except Exception:  # Discord tables appear once the Discord bot first runs
+            return 0
+
     def admin_text(self):
         c = lambda sql, *a: self.one(sql, *a)[0]
         now = int(self.now())
@@ -372,6 +378,9 @@ class RaidMixin:
             f"שבטים במשחק: <b>{c('SELECT COUNT(*) FROM clans')}</b> | חדשים ב-24 שעות: <b>{c('SELECT COUNT(*) FROM clans WHERE joined>=?', day_ago)}</b>",
             f"פשיטות: <b>{c('SELECT COUNT(*) FROM raids')}</b> (פתוחות עכשיו: {live})",
             f"חשיפות של שמות קבוצות בקבוצות אחרות: <b>{c('SELECT COALESCE(SUM(seen),0) FROM clans')}</b>",
+            "",
+            "<b>🎮 דיסקורד</b>",
+            f"שרתים: <b>{self.dcount('SELECT COUNT(*) FROM dguilds WHERE left_at IS NULL')}</b> | שחקנים: <b>{self.dcount('SELECT COUNT(*) FROM dusers')}</b> | מכות היום: <b>{self.dcount('SELECT COUNT(*) FROM dhits WHERE day=?', self.pen_day())}</b>",
             "",
             "<b>⭐ חנות</b>",
             f"רכישות: <b>{c('SELECT COUNT(*) FROM purchases')}</b> | כוכבים: <b>{c('SELECT COALESCE(SUM(stars),0) FROM purchases')}</b>",
